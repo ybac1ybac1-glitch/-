@@ -12,6 +12,8 @@ def index():
  return render_template('index.html',stocks=stocks,market=market,error=error,stats=status())
 @app.post('/admin/update')
 def update(): return jsonify(start_update())
+@app.get('/admin/update/status')
+def update_status(): return jsonify(status())
 @app.route('/stock/<ts_code>')
 def stock_detail(ts_code):
  stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
