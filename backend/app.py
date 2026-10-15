@@ -1,5 +1,5 @@
 from flask import Flask, render_template, abort, jsonify
-from data import get_stock_data,get_history,get_stock_list,pro,update_market,stats
+from data import get_stock_data,get_history,get_stock_list,pro,start_update,status
 from stock_filter import filter_stock
 from market import assess
 from announcement import fetch as fetch_ann, analyze as ann_analyze
@@ -9,9 +9,9 @@ app=Flask(__name__)
 def index():
  df,error=get_stock_data(); market=assess(daily=df) if not df.empty else {'state':'无法判断','factor':0,'trend':0,'breadth':0,'amount_change':0,'reason':'市场环境数据缺失'}
  stocks=filter_stock(df,market,history_loader=lambda code:get_history(code)) .to_dict('records') if not df.empty else []
- return render_template('index.html',stocks=stocks,market=market,error=error,stats=stats())
+ return render_template('index.html',stocks=stocks,market=market,error=error,stats=status())
 @app.post('/admin/update')
-def update(): return jsonify(update_market())
+def update(): return jsonify(start_update())
 @app.route('/stock/<ts_code>')
 def stock_detail(ts_code):
  stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
