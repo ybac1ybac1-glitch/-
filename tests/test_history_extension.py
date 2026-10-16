@@ -26,3 +26,15 @@ def test_date_task_persistence_skips_complete(monkeypatch):
 def test_failed_date_is_persisted_for_resume(monkeypatch):
  import data,history_extension
  data.DB_PATH=tempfile.mktemp(suffix='.sqlite3'); c=data._db(); history_extension._ensure(c); c.execute("INSERT INTO history_date_tasks VALUES('20240102','PENDING_VERIFY','PENDING_VERIFY','FAILED',0,0,'network','now')"); c.commit(); assert c.execute("select status from history_date_tasks").fetchone()[0]=='FAILED'
+def test_restart_resume_skips_completed_and_retries_failed(monkeypatch):
+ import data,history_extension
+ data.DB_PATH=tempfile.mktemp(suffix='.sqlite3'); calls=[]; seq=['ok','fail','ok','ok']
+ class Fake:
+  def trade_cal(self,**kw): return pd.DataFrame({'cal_date':['20240102','20240103']})
+  def daily(self,trade_date): calls.append(('daily',trade_date));
+  
+  def daily_basic(self,**kw): calls.append(('basic',kw['trade_date'])); return pd.DataFrame([{'ts_code':'X','trade_date':kw['trade_date'],'turnover_rate':2}])
+ def daily(trade_date):
+  if trade_date=='20240103' and calls.count(('daily','20240103'))==1: raise RuntimeError('mid run')
+  return pd.DataFrame([{'ts_code':'X','trade_date':trade_date,'open':1,'high':2,'low':.5,'close':1.5,'pre_close':1.4,'change':.1,'pct_chg':7,'vol':10,'amount':100}])
+ Fake.daily=daily; data.pro=Fake(); monkeypatch.setattr(history_extension,'_target_dates',lambda n:['20240102','20240103']); history_extension.run(2); c=data._db(); assert c.execute("select status from history_date_tasks where trade_date='20240102'").fetchone()[0]=='TURNOVER_COMPLETE'; c.close(); history_extension.run(2); c=data._db(); assert c.execute("select count(*) from daily").fetchone()[0]==2; assert c.execute("select close from daily where trade_date='20240102'").fetchone()[0]==1.5; c.close(); assert calls.count(('daily','20240102'))==1
