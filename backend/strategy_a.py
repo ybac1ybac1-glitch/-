@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np,pandas as pd
 from evidence import Evidence,validate
 STRATEGY_ID="A_WYCKOFF_VOLUME"; VERSION="A-P2.2-0.3"; THRESHOLD_VERSION="A-E4-2026-03"
-PARAMS={"range_window":80,"range_min_days":40,"range_width_max":.35,"range_quantiles":(.10,.90),"range_test_tolerance":.03,"range_min_tests":2,"max_down_slope":-.002,"volume_contraction":.80,"spring_lookback":20,"spring_break":.02,"spring_reclaim":.995,"test_days":15,"test_volume_ratio":.85,"sos_volume_ratio":1.5,"sos_close_position":.70,"lps_volume_ratio":.80,"lps_tolerance":.03}
+PARAMS={"range_window":80,"range_min_days":40,"range_width_max":.35,"range_quantiles":(.10,.90),"range_test_tolerance":.03,"range_min_tests":2,"max_down_slope":-.002,"volume_contraction":.80,"spring_lookback":20,"spring_break":.02,"spring_reclaim":.995,"test_days":15,"test_volume_ratio":.85,"sos_volume_ratio":1.5,"sos_close_position":.70,"lps_volume_ratio":.80,"lps_tolerance":.03,"lps_wait_days":15}
 REQUIRED=("trade_date","open","high","low","close","vol","amount")
 def _ev(rule,symbol,date,state,section,evidence=None,missing=(),risk="unknown",invalidation="",confirmation=""):
  return validate(Evidence(STRATEGY_ID,rule,VERSION,"三书研究报告/策略A规范",section,"E4",symbol,str(date),state=state,confirmation_date=str(confirmation or ""),invalidation=invalidation,risk_level=risk,missing_fields=tuple(missing),evidence={"threshold_version":THRESHOLD_VERSION,"parameters":dict(PARAMS),**(evidence or {})}))
