@@ -14,7 +14,10 @@ if ts and TOKEN:
  except Exception as e: _status['last_error']=str(e)
 
 def _db():
- c=sqlite3.connect(DB_PATH); c.execute('''CREATE TABLE IF NOT EXISTS daily(ts_code TEXT,trade_date TEXT,open REAL,high REAL,low REAL,close REAL,pre_close REAL,change REAL,pct_chg REAL,vol REAL,amount REAL,PRIMARY KEY(ts_code,trade_date))'''); c.execute('CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT)'); c.commit(); return c
+ c=sqlite3.connect(DB_PATH); c.execute('''CREATE TABLE IF NOT EXISTS daily(ts_code TEXT,trade_date TEXT,open REAL,high REAL,low REAL,close REAL,pre_close REAL,change REAL,pct_chg REAL,vol REAL,amount REAL,turnover_rate REAL,PRIMARY KEY(ts_code,trade_date))''');
+ cols={r[1] for r in c.execute('PRAGMA table_info(daily)')};
+ if 'turnover_rate' not in cols: c.execute('ALTER TABLE daily ADD COLUMN turnover_rate REAL');
+ c.execute('CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT)'); c.commit(); return c
 
 def status(): return dict(_status)
 def _call(method,**kwargs):
@@ -29,9 +32,9 @@ def _call(method,**kwargs):
   _status['failed']+=1; _status['last_error']=f'{method}: {e}'; raise
 
 def _upsert(c,frame):
- cols=['ts_code','trade_date','open','high','low','close','pre_close','change','pct_chg','vol','amount']
+ cols=['ts_code','trade_date','open','high','low','close','pre_close','change','pct_chg','vol','amount','turnover_rate']
  frame=frame.reindex(columns=cols); frame.to_sql('_incoming',c,if_exists='replace',index=False)
- c.execute('''INSERT INTO daily SELECT * FROM _incoming WHERE ts_code IS NOT NULL AND trade_date IS NOT NULL ON CONFLICT(ts_code,trade_date) DO UPDATE SET open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,pre_close=excluded.pre_close,change=excluded.change,pct_chg=excluded.pct_chg,vol=excluded.vol,amount=excluded.amount'''); c.execute('DROP TABLE _incoming')
+ c.execute('''INSERT INTO daily SELECT * FROM _incoming WHERE ts_code IS NOT NULL AND trade_date IS NOT NULL ON CONFLICT(ts_code,trade_date) DO UPDATE SET open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,pre_close=excluded.pre_close,change=excluded.change,pct_chg=excluded.pct_chg,vol=excluded.vol,amount=excluded.amount,turnover_rate=excluded.turnover_rate'''); c.execute('DROP TABLE _incoming')
 
 def _calendar(limit=120):
  if not pro: return []
@@ -68,6 +71,8 @@ def _run_update(max_days=120):
     frame=_call('daily',trade_date=day)
     if frame is None or frame.empty: _status['last_error']=f'{day}: 未发布行情'; break
     if not {'ts_code','trade_date','open','high','low','close','vol'}.issubset(frame.columns): raise ValueError('daily字段不完整')
+    basic=_call('daily_basic',trade_date=day,fields='ts_code,trade_date,turnover_rate');
+    if basic is not None and not basic.empty and 'turnover_rate' in basic: frame=frame.merge(basic[['ts_code','trade_date','turnover_rate']],on=['ts_code','trade_date'],how='left');
     _upsert(c,frame); c.commit(); _status['completed']=i; _status['last_update']=datetime.now().isoformat()
    except Exception as e: _status['last_error']=str(e); break
  finally: _status['running']=False
