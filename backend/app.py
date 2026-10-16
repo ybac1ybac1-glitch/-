@@ -6,6 +6,7 @@ from announcement import fetch as fetch_ann, analyze as ann_analyze
 from news import fetch as fetch_news, analyze as news_analyze
 from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
+from validation import validate_cache,start as start_validation,status as validation_status,get_results
 import os, sqlite3
 app=Flask(__name__)
 
@@ -27,6 +28,26 @@ def update(): return jsonify(start_update())
 def turnover_backfill(): return jsonify(start_turnover_backfill())
 @app.get('/admin/update/status')
 def update_status(): return jsonify(status())
+@app.get('/strategy/a/validate')
+def strategy_a_validate_status(): return jsonify(validation_status())
+@app.post('/strategy/a/validate')
+def strategy_a_validate_start():
+ from flask import request
+ import data
+ q=request.get_json(silent=True) or request.form or request.args
+ try: batch=int(q.get('batch_size',100)); max_results=int(q.get('max_results',200))
+ except Exception: return jsonify({'error':'batch_size/max_results必须为整数'}),400
+ if not 1<=batch<=1000 or not 1<=max_results<=10000:return jsonify({'error':'batch_size必须1-1000，max_results必须1-10000'}),400
+ result, code = start(data.DB_PATH,q.get('asof_date'),batch,max_results)
+ return jsonify(result),code
+@app.get('/strategy/a/validate/results')
+def strategy_a_validate_results():
+ from flask import request
+ try: page=int(request.args.get('page',1)); size=int(request.args.get('page_size',100))
+ except Exception:return jsonify({'error':'page/page_size必须为整数'}),400
+ result=get_results(page,size)
+ if result.get('errors'): return jsonify(result),400
+ return jsonify(result)
 @app.get('/strategy/a')
 def strategy_a(): return render_template('strategy.html',title='策略 A：威科夫×操盘手2',rows=_p1rows('A_WYCKOFF_VOLUME'))
 @app.get('/strategy/b')
