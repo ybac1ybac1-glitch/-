@@ -67,7 +67,7 @@ def replay_events(symbol, frame, asof_date=None):
    if x.low.iloc[j]<=pressure*(1+PARAMS["lps_tolerance"]) and x.close.iloc[j]>=pressure*(1-PARAMS["lps_tolerance"]) and vr<=PARAMS["lps_volume_ratio"]:
     e["current_state"]="LPS_CANDIDATE"; e["transition_history"].append({"date":jd,"from":"WAITING_LPS","to":"LPS_CANDIDATE","reason":"low_volume_retest"}); break
   else:
-   if len(x)>i+1 and e["current_state"]=="WAITING_LPS": e["current_state"]="EXPIRED"; e["transition_history"].append({"date":x.trade_date.iloc[-1].date().isoformat(),"from":"WAITING_LPS","to":"EXPIRED","reason":"no_lps"})
+   if len(x)>i+1 and e["current_state"]=="WAITING_LPS" and len(x)-1-i>PARAMS["lps_wait_days"]: e["current_state"]="EXPIRED"; e["transition_history"].append({"date":x.trade_date.iloc[min(len(x)-1,i+PARAMS["lps_wait_days"])].date().isoformat(),"from":"WAITING_LPS","to":"EXPIRED","reason":"lps_timeout"})
   events.append(e)
  return events
 
@@ -114,3 +114,42 @@ def scan(symbol,asof_date,frame=None):
  if eff>2.5 and res<0:flags.append("high_volume_down_close")
  if rng.get("width",0)>.50:flags.append("wide_range")
  out.append(_ev("A09",symbol,date,"CANDIDATE" if len(flags)>=2 else "WATCH","派发风险",{"risk_conditions":flags,"independent_conditions":len(flags)},risk="high" if len(flags)>=2 else "low"));return out
+
+def scan(symbol,asof_date,frame=None):
+    """Generate Evidence from the single replay_events source of truth."""
+    x,miss=_prepare(asof_date,frame)
+    if x is None or x.empty:return [_ev("A00",symbol,asof_date,"INSUFFICIENT_DATA","数据质量",missing=miss or ["valid_ohlcv"])]
+    date=x.trade_date.iloc[-1].date().isoformat()
+    if len(x)<20:return [_ev("A00",symbol,date,"INSUFFICIENT_DATA","数据质量",missing=("at_least_20_valid_sessions",))]
+    rng=detect_range(x.iloc[:-1]); out=[_ev("A01",symbol,date,"CANDIDATE" if rng.get("valid") else "WATCH","交易区间识别",rng)]
+    w=x.iloc[:-1].tail(PARAMS["range_window"]); recent,base=w.tail(10),w.head(max(10,len(w)-10)); rv,bv=recent.vol.mean(),base.vol.mean(); rr=(recent.high-recent.low).mean()/max(recent.close.mean(),1e-12); br=(base.high-base.low).mean()/max(base.close.mean(),1e-12); pull=float(recent.close.iloc[-1]/recent.close.iloc[0]-1); supply=rv<=bv*PARAMS["volume_contraction"] and (rr<=br or pull<0) and recent.amount.mean()>0
+    out.append(_ev("A02",symbol,date,"CANDIDATE" if supply else "WATCH","供应减弱",{"recent_volume":rv,"base_volume":bv,"range_ratio_recent":rr,"range_ratio_base":br,"pullback":pull,"liquid":bool(recent.amount.mean()>0)}))
+    events=replay_events(symbol,x,date)
+    def event_ev(rule,etype,section):
+        es=[e for e in events if e["event_type"]==etype]
+        transitions=[]
+        for e in es:
+            for h in e["transition_history"]:
+                if h["date"]==date: transitions.append((e,h))
+        current=[e for e in es if e["event_date"]==date]
+        chosen=current[-1] if current else (es[-1] if es else None)
+        if rule=="A03":
+            state="CANDIDATE" if current else "WATCH"; ev={"event_id":chosen["event_id"] if chosen else "","event_date":chosen["event_date"] if chosen else "","events":es,"frozen_support":chosen.get("frozen_support") if chosen else None}
+        elif rule=="A05":
+            state="CANDIDATE" if current else "WATCH"; ev={"event_id":chosen["event_id"] if chosen else "","event_date":chosen["event_date"] if chosen else "","events":es,"frozen_resistance":chosen.get("frozen_resistance") if chosen else None}
+        elif rule=="A04":
+            state="CANDIDATE" if any(h.get("to")=="TEST_CANDIDATE" for _,h in transitions) else ("INVALIDATED" if any(h.get("to")=="INVALIDATED" for _,h in transitions) else "WATCH")
+            e,h=transitions[-1] if transitions else (chosen,None); ev={"event_id":e["event_id"] if e else "","event_date":e["event_date"] if e else "","transition":h,"events":es,"frozen_support":e.get("frozen_support") if e else None}
+        else:
+            state="CANDIDATE" if any(h.get("to")=="LPS_CANDIDATE" for _,h in transitions) else ("INVALIDATED" if any(h.get("to")=="INVALIDATED" for _,h in transitions) else "WATCH")
+            e,h=transitions[-1] if transitions else (chosen,None); ev={"event_id":e["event_id"] if e else "","event_date":e["event_date"] if e else "","transition":h,"events":es,"frozen_resistance":e.get("frozen_resistance") if e else None,"lps_wait_days":PARAMS["lps_wait_days"]}
+        return _ev(rule,symbol,date,state,section,ev,missing=("stk_limit,halt_status,adj_factor",) if es else ())
+    out += [event_ev("A03","SPRING","Spring候选"),event_ev("A04","SPRING","Spring后测试"),event_ev("A05","SOS","SOS强势突破"),event_ev("A06","SOS","LPS回踩")]
+    bar=x.iloc[-1]; avg=x.vol.shift(1).rolling(20,min_periods=10).mean(); av=float(avg.iloc[-1]) if pd.notna(avg.iloc[-1]) else 0; effort=float(bar.vol/max(av,1e-12)); result=float((bar.close-bar.open)/max(bar.open,1e-12))
+    out += [_ev("A07",symbol,date,"WATCH","努力与结果",{"volume_effort":effort,"price_result":result}),_ev("A08",symbol,date,"WATCH","量价背离",{"price_up":bool(x.close.tail(5).iloc[-1]>x.close.tail(5).iloc[0]),"volume_down":bool(x.vol.tail(5).iloc[-1]<x.vol.tail(5).iloc[0])})]
+    flags=[]; 
+    if rng.get("slope",0)>.003:flags.append("rising_trend")
+    if effort>2.5 and result<0:flags.append("high_volume_down_close")
+    if rng.get("width",0)>.50:flags.append("wide_range")
+    out.append(_ev("A09",symbol,date,"CANDIDATE" if len(flags)>=2 else "WATCH","派发风险",{"risk_conditions":flags,"independent_conditions":len(flags)}))
+    return out
