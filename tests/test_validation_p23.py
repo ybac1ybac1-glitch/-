@@ -66,7 +66,7 @@ def test_default_date_skips_newer_unverified(tmp_path):
 def test_status_is_compact_and_results_snapshot_separate(tmp_path):
  p=str(tmp_path/"m.sqlite3"); make_db(p)
  import validation
- validation._state.update(status="COMPLETED",processed=1,total=1,result={"results":[{"ts_code":"X"}]})
+ validation._state.update(status="COMPLETED",processed=1,total=1,result={"results":[{"ts_code":"X"}]}); validation._snapshot={"results":[{"ts_code":"X"}],"returned_matches":1}
  assert "result" not in validation.status()
  assert validation.get_results(1,1)["returned_matches"]==1
 
