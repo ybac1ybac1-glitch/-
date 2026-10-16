@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>策略 A · V4 复盘</title>
+<h1>策略 A · V4 盘后复盘</h1>
+<p>状态：{{ status.status }}　已处理 {{ status.processed }}/{{ status.total }}　失败 {{ status.failed }}　日期 {{ status.asof_date or '未开始' }}</p>
+<form method="post" action="/strategy/a/v4/start"><button>开始复盘</button></form>
+{% if result.scan %}<p>复盘日期：{{ result.scan.asof_date }}，命中股票：{{ result.scan.stock_count }}，信号：{{ result.scan.signal_count }}</p>
+<table border="1"><tr><th>代码</th><th>规则</th><th>状态</th><th>信号日期</th><th>事件ID</th></tr>
+{% for x in result.items %}<tr><td>{{ x.ts_code }}</td><td>{{ x.rule_id }}</td><td>{{ x.state }}</td><td>{{ x.signal_date }}</td><td>{{ x.event_id }}</td></tr>{% endfor %}</table>
+{% else %}<p>尚无成功保存的复盘结果。点击“开始复盘”后后台运行，页面可继续查看旧结果。</p>{% endif %}
