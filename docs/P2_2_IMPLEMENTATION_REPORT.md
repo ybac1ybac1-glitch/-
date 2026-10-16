@@ -31,3 +31,8 @@
 ## 验收清理
 
 删除了旧的重复 `scan()`，当前唯一实现只调用 `replay_events()` 生成 A03–A06 Evidence。Spring/SOS 的第 1 个后续有效日先进入 WAITING 状态；第 1–15 日寻找测试/LPS，第 16 日才允许 EXPIRED。失效转换的 from 始终是事件当前状态，终态不会追加后续转换。测试改为 replay 事件列表与 scan Evidence 严格相等，不使用 WATCH 兜底断言。
+
+
+## 状态转换验收
+
+移除了 Spring 首个后续交易日重复的 CANDIDATE→WAITING_TEST 分支；SOS 首日先进入 WAITING_LPS，再判断破位。每条转换的 from 必须等于前一条 to，INVALIDATED、EXPIRED、TEST_CANDIDATE、LPS_CANDIDATE 作为终态不再追加转换。新增转换连续性和 asof 截断测试。
