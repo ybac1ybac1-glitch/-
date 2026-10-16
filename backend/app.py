@@ -18,7 +18,7 @@ def update_status(): return jsonify(status())
 def stock_detail(ts_code):
  stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
  if hit.empty: abort(404)
- info=hit.iloc[0].to_dict(); frames={'daily':get_history(ts_code),'weekly':get_history(ts_code),'monthly':get_history(ts_code)}
+ info=hit.iloc[0].to_dict(); frames={'daily':get_history(ts_code,'daily'),'weekly':get_history(ts_code,'weekly'),'monthly':get_history(ts_code,'monthly')}
  from wyckoff import analyze
  return render_template('detail.html',stock=info,analysis=analyze(frames['daily']),frames={k:v.tail(120).to_dict('records') for k,v in frames.items()},ann=ann_analyze(fetch_ann(ts_code,pro)),news=news_analyze(fetch_news(ts_code,pro)),error='')
 if __name__=='__main__': app.run(host='127.0.0.1',port=8000,debug=False)
