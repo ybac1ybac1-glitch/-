@@ -12,3 +12,11 @@ def test_extension_uses_missing_dates_and_preserves_existing(monkeypatch):
 
 def test_no_real_token_on_status():
  import data; assert not data.status().get('token')
+def test_calendar_requires_360(monkeypatch):
+ import data,history_extension
+ class Fake:
+  def trade_cal(self,**kw): return pd.DataFrame({'cal_date':[str(20240101+i) for i in range(10)]})
+ data.pro=Fake(); data._status['history_error']=''; assert len(history_extension._target_dates(360))==10; assert '少于' in data._status['history_error']
+def test_existing_row_not_overwritten(monkeypatch):
+ import data,history_extension
+ data.DB_PATH=tempfile.mktemp(suffix='.sqlite3'); c=data._db(); old={'ts_code':'X','trade_date':'20240102','open':1,'high':2,'low':.5,'close':1.5,'pre_close':1.4,'change':.1,'pct_chg':7,'vol':10,'amount':100,'turnover_rate':9}; data._upsert(c,pd.DataFrame([old])); c.commit(); history_extension._insert_missing(c,pd.DataFrame([{**old,'close':99,'turnover_rate':None},{**old,'ts_code':'Y','close':2,'turnover_rate':3}])); c.commit(); assert c.execute("select close,turnover_rate from daily where ts_code='X'").fetchone()==(1.5,9); assert c.execute("select close from daily where ts_code='Y'").fetchone()[0]==2
