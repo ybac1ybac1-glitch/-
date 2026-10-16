@@ -6,7 +6,7 @@ from urllib.parse import quote
 import pandas as pd
 from strategy_a import scan
 REQUIRED=("ts_code","trade_date","open","high","low","close","vol","amount"); MAX_STORED=100000
-_task_lock=threading.Lock(); _state={"status":"IDLE","processed":0,"scanned":0,"total":0,"failed":0,"abnormal":0,"no_bar_on_asof":0,"asof_date":None,"error":"","result":None}
+_task_lock=threading.Lock(); _snapshot_lock=threading.Lock(); _snapshot=None; _state={"status":"IDLE","processed":0,"scanned":0,"total":0,"failed":0,"abnormal":0,"no_bar_on_asof":0,"asof_date":None,"error":"","result":None}
 def _connect(path):
  c=sqlite3.connect("file:"+quote(str(path),safe="/\\:")+"?mode=ro",uri=True);c.execute("PRAGMA query_only=ON");return c
 def _date(v):
@@ -35,7 +35,11 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
   if miss:out["errors"]=["缺少字段:"+",".join(miss)];return out
   raw=[r[0] for r in c.execute("select distinct trade_date from daily")];parsed=pd.to_datetime(pd.Series(raw).astype(str),format="%Y%m%d",errors="coerce").dropna()
   if parsed.empty:out["errors"]=["没有可解析的交易日"];return out
-  if asof_date is None:cutoff=parsed.max();asof=cutoff.strftime("%Y%m%d")
+  if asof_date is None:
+   if "history_date_tasks" not in tables: return {"errors":["UNVERIFIED: 缺少history_date_tasks"]}
+   valid=[r[0] for r in c.execute("select trade_date from history_date_tasks where ohlcv_state=? and turnover_state=? order by trade_date desc",("OHLCV_COMPLETE","TURNOVER_COMPLETE")) if str(r[0]) in set(str(x) for x in raw)]
+   if not valid:return {"errors":["没有经过完整性验证且存在行情的交易日"]}
+   asof=str(valid[0]);cutoff=pd.to_datetime(asof,format="%Y%m%d")
   else:
    try:cutoff,asof=_date(asof_date)
    except ValueError as e:return {"errors":[str(e)]}
@@ -68,10 +72,20 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
      if len(out["errors"])<20:out["errors"].append(f"{code}: {e}")
     if progress:progress(out)
   stored.sort(key=lambda x:x["ts_code"]); out["truncated"]=len(stored)>=MAX_STORED and out["total_matches"]>len(stored); out["results"]=stored; out["returned_matches"]=len(stored); out["rule_hits"]=dict(out["rule_hits"])
+  with _snapshot_lock:
+   global _snapshot; _snapshot=dict(out)
  finally:c.close()
  return out
+def get_results(page=1,page_size=100):
+ if int(page)<1 or int(page_size)<1 or int(page_size)>10000: return {"errors":["page/page_size无效"]}
+ with _snapshot_lock: snap=dict(_snapshot) if _snapshot else None
+ if not snap:return {"status":_state["status"],"results":[],"returned_matches":0}
+ rows=snap.get("results",[]); off=(int(page)-1)*int(page_size); snap["results"]=rows[off:off+int(page_size)]; snap["returned_matches"]=len(snap["results"]); snap["page"]=int(page); snap["page_size"]=int(page_size); return snap
+
 def start(path,asof_date=None,batch_size=100,max_results=200):
  if not _task_lock.acquire(False):return {"status":"REJECTED","error":"validation already running"},409
+ global _snapshot
+ with _snapshot_lock: _snapshot=None
  _state.update(status="RUNNING",processed=0,scanned=0,total=0,failed=0,abnormal=0,no_bar_on_asof=0,error="",result=None,asof_date=asof_date)
  def progress(o):_state.update(processed=o["processed"],scanned=o["scanned"],total=o["total"],failed=o["failed"],abnormal=o["abnormal"],no_bar_on_asof=o["no_bar_on_asof"],asof_date=o["asof_date"])
  def run():
