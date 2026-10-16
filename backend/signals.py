@@ -11,3 +11,15 @@ def list_signals(c,strategy_id=None):
  return c.execute(q,args).fetchall()
 def resonance(c):
  return c.execute('''SELECT a.symbol,a.signal_date FROM signals a JOIN signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date WHERE a.strategy_id='A_WYCKOFF_VOLUME' AND b.strategy_id='B_YEREN' ''').fetchall()
+
+_ALLOWED={'WATCH':{'CANDIDATE','NEEDS_INTRADAY','INSUFFICIENT_DATA','INVALIDATED'},'CANDIDATE':{'CONFIRMED','NEEDS_INTRADAY','INVALIDATED'},'NEEDS_INTRADAY':{'CONFIRMED','INVALIDATED'},'INSUFFICIENT_DATA':{'WATCH','CANDIDATE','INVALIDATED'},'CONFIRMED':{'INVALIDATED'},'INVALIDATED':set()}
+def transition(c,signal_id,new_state,reason,event_time,confirmation_date=''):
+ from datetime import datetime
+ row=c.execute('SELECT state,signal_date FROM signals WHERE id=?',(signal_id,)).fetchone()
+ if not row: raise ValueError('signal not found')
+ old,signal_date=row
+ if new_state not in _ALLOWED.get(old,set()): raise ValueError(f'invalid transition {old}->{new_state}')
+ if event_time < signal_date: raise ValueError('event before signal date')
+ if confirmation_date and confirmation_date < signal_date: raise ValueError('confirmation before signal')
+ c.execute('UPDATE signals SET state=?,confirmation_date=? WHERE id=?',(new_state,confirmation_date,signal_id)); c.execute('INSERT OR IGNORE INTO signal_events(signal_id,event_time,old_state,new_state,reason) VALUES(?,?,?,?,?)',(signal_id,event_time,old,new_state,reason)); c.commit()
+ return c.execute('SELECT state FROM signals WHERE id=?',(signal_id,)).fetchone()[0]
