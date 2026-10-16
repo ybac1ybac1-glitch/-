@@ -22,3 +22,8 @@ python -c "from validation import validate_cache; import json; print(json.dumps(
 ## 服务安全
 
 GET `/strategy/a/validate` 只返回后台任务状态；POST 才能启动受控任务，同一时刻只允许一个任务。`batch_size` 和 `max_results` 有范围校验。扫描结果限制最大保留数量，统计字段 `total_matches`、`returned_matches`、`truncated` 明确区分完整统计与分页结果。连接使用 SQLite `mode=ro` 和 `PRAGMA query_only=ON`。
+
+
+## 分页与进度
+
+POST `/strategy/a/validate` 启动任务，例如 `curl -X POST "http://127.0.0.1:8000/strategy/a/validate?asof_date=20261015&batch_size=100&max_results=10000"`；重复任务返回 409。GET `/strategy/a/validate` 查询实时 processed/scanned、total、failed、abnormal、no_bar_on_asof、asof_date。任务完成后用 `/strategy/a/validate/results?page=1&page_size=100` 查询稳定排序结果。total_matches 是命中股票数，total_signals 是命中规则信号数，returned_matches 是当前页股票数。历史日期若 history_date_tasks 未完成，不允许正式复盘。Windows 从 backend 目录运行时使用 `market_cache.sqlite3` 的绝对路径或 `python -m ...`，不改写原库。
