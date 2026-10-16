@@ -36,3 +36,6 @@
 ## 状态转换验收
 
 移除了 Spring 首个后续交易日重复的 CANDIDATE→WAITING_TEST 分支；SOS 首日先进入 WAITING_LPS，再判断破位。每条转换的 from 必须等于前一条 to，INVALIDATED、EXPIRED、TEST_CANDIDATE、LPS_CANDIDATE 作为终态不再追加转换。新增转换连续性和 asof 截断测试。
+
+
+本轮将 Spring 超时严格定义为事件后第 1–15 个有效交易日等待测试，第 16 日才记录 EXPIRED，并新增指定日期 Spring/SOS 与后续测试/LPS 的严格正例断言，不再允许空事件列表作为正例通过。
