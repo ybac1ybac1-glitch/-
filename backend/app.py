@@ -1,5 +1,5 @@
 from flask import Flask, render_template, abort, jsonify
-from data import get_stock_data,get_history,get_stock_list,pro,start_update,status
+from data import get_stock_data,get_history,get_stock_list,pro,start_update,status,start_turnover_backfill
 from stock_filter import filter_stock
 from market import assess
 from announcement import fetch as fetch_ann, analyze as ann_analyze
@@ -12,6 +12,8 @@ def index():
  records=stocks; return render_template('index.html',stocks=records,priority_stocks=[x for x in records if x.get('priority')==1],market=market,error=error,stats=status())
 @app.post('/admin/update')
 def update(): return jsonify(start_update())
+@app.post('/admin/turnover-backfill')
+def turnover_backfill(): return jsonify(start_turnover_backfill())
 @app.get('/admin/update/status')
 def update_status(): return jsonify(status())
 @app.route('/stock/<ts_code>')
