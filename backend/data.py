@@ -6,8 +6,8 @@ except Exception: ts=None
 from config import TOKEN
 BASE=os.path.dirname(__file__); DB_PATH=os.path.join(BASE,'market_cache.sqlite3')
 MAX_REQUESTS_PER_MINUTE=int(os.getenv('TUSHARE_MAX_REQUESTS_PER_MINUTE','60'))
-_lock=threading.Lock(); _update_lock=threading.Lock(); _turnover_lock=threading.Lock(); _thread=None; _turnover_thread=None; _last_request=0.0
-_status={'running':False,'requested':0,'success':0,'failed':0,'completed':0,'total':0,'last_error':'','last_update':''}
+_lock=threading.Lock(); _task_lock=threading.Lock(); _update_lock=threading.Lock(); _turnover_lock=threading.Lock(); _thread=None; _turnover_thread=None; _last_request=0.0
+_status={'running':False,'turnover_running':False,'turnover_completed':0,'turnover_total':0,'turnover_error':'','task_rejected':0,'requested':0,'success':0,'failed':0,'completed':0,'total':0,'last_error':'','last_update':''}
 pro=None
 if ts and TOKEN:
  try: ts.set_token(TOKEN); pro=ts.pro_api()
@@ -79,8 +79,12 @@ def _run_update(max_days=120):
 
 def start_update(max_days=120):
  global _thread
- if _status['running'] or (_thread and _thread.is_alive()): return status()
- _thread=threading.Thread(target=_run_update,args=(max_days,),daemon=True); _thread.start(); return status()
+ if not _task_lock.acquire(False): _status['task_rejected']+=1; return status()
+ if _status['turnover_running'] or (_thread and _thread.is_alive()): _status['task_rejected']+=1; _task_lock.release(); return status()
+ def runner():
+  try: _run_update(max_days)
+  finally: _task_lock.release()
+ _thread=threading.Thread(target=runner,daemon=True); _thread.start(); return status()
 
 
 def _run_turnover_backfill():
@@ -99,5 +103,9 @@ def _run_turnover_backfill():
 
 def start_turnover_backfill():
  global _turnover_thread
+ if not _task_lock.acquire(False): _status['task_rejected']+=1; return status()
  if _status.get('running') or _status.get('turnover_running') or (_turnover_thread and _turnover_thread.is_alive()): return status()
- _turnover_thread=threading.Thread(target=_run_turnover_backfill,daemon=True); _turnover_thread.start(); return status()
+ def runner():
+  try: _run_turnover_backfill()
+  finally: _task_lock.release()
+ _turnover_thread=threading.Thread(target=runner,daemon=True); _turnover_thread.start(); return status()
