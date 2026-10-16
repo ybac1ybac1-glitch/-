@@ -48,8 +48,8 @@ def replay_events(symbol, frame, asof_date=None):
     if x.low.iloc[j] >= support*(1-PARAMS["lps_tolerance"]) and baseline>0 and x.vol.iloc[j] <= baseline*PARAMS["test_volume_ratio"]:
      e["current_state"]="TEST_CANDIDATE"; e["transition_history"].append({"date":jd,"from":"WAITING_TEST","to":"TEST_CANDIDATE","reason":"low_volume_test"}); break
    else:
-    if len(x)>=i+1+PARAMS["test_days"] and e["current_state"] in {"CANDIDATE","WAITING_TEST"}:
-     e["current_state"]="EXPIRED"; e["transition_history"].append({"date":x.trade_date.iloc[min(len(x)-1,i+PARAMS["test_days"])].date().isoformat(),"from":e["current_state"],"to":"EXPIRED","reason":"test_timeout"})
+    if len(x)>i+1+PARAMS["test_days"] and e["current_state"] in {"CANDIDATE","WAITING_TEST"}:
+     e["current_state"]="EXPIRED"; e["transition_history"].append({"date":x.trade_date.iloc[min(len(x)-1,i+PARAMS["test_days"]+1)].date().isoformat(),"from":e["current_state"],"to":"EXPIRED","reason":"test_timeout"})
    events.append(e)
  for i in range(20,len(x)):
   r=ranges[i]; pressure=r.get("resistance"); av=x.vol.iloc[max(0,i-20):i].mean()
