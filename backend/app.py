@@ -5,6 +5,7 @@ from market import assess
 from announcement import fetch as fetch_ann, analyze as ann_analyze
 from news import fetch as fetch_news, analyze as news_analyze
 from signals import migrate, list_signals, resonance
+from history_extension import start as start_history_extend
 import os, sqlite3
 app=Flask(__name__)
 
@@ -18,6 +19,8 @@ def index():
  df,error=get_stock_data(); market=assess(daily=df) if not df.empty else {'state':'无法判断','factor':0,'trend':0,'breadth':0,'amount_change':0,'reason':'市场环境数据缺失'}
  stocks=filter_stock(df,market,history_loader=lambda code:get_history(code)) .to_dict('records') if not df.empty else []
  records=stocks; return render_template('index.html',stocks=records,priority_stocks=[x for x in records if x.get('priority')==1],market=market,error=error,stats=status())
+@app.post('/admin/history-extend')
+def history_extend(): return jsonify(start_history_extend(360))
 @app.post('/admin/update')
 def update(): return jsonify(start_update())
 @app.post('/admin/turnover-backfill')
