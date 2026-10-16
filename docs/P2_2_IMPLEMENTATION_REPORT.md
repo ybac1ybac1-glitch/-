@@ -16,3 +16,8 @@
 ## 测试
 
 新增并运行跨日序列、未来隔离、下降趋势/宽幅反例、无先前区间 Spring、无先前区间 SOS、Spring 测试失效/超时、SOS 后 LPS 成功或破位、事件幂等测试。缺少涨跌停、停牌、复权字段时仍不产生 CONFIRMED 或可成交买点。
+
+
+## 事件生命周期（本轮）
+
+新增 `replay_events()`，为每个历史 Spring/SOS 生成独立稳定 `event_id`，保存事件日期、冻结支撑/压力、量能基准、阈值版本、当前状态、逐日 transition_history 和失效原因。Spring 状态为 CANDIDATE → WAITING_TEST → TEST_CANDIDATE / INVALIDATED / EXPIRED；SOS 状态为 CANDIDATE → WAITING_LPS → LPS_CANDIDATE / INVALIDATED / EXPIRED。事件按日期重放，后续事件不会覆盖已完成事件。`scan()` 接口保持不变，Evidence 继续使用 P1 结构。
