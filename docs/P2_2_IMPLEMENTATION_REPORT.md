@@ -26,3 +26,8 @@
 ## scan 与生命周期统一
 
 `scan()` 现在只从 `replay_events()` 读取 A03/A04/A05/A06，并把事件 ID、事件日期、冻结边界和当日 transition 写入 Evidence；历史事件不会被最近事件覆盖。SOS 的 LPS 等待窗口为 `PARAMS['lps_wait_days']=15` 个有效交易日（E4），未达到期限保持 WAITING_LPS，只有超期才 EXPIRED。
+
+
+## 验收清理
+
+删除了旧的重复 `scan()`，当前唯一实现只调用 `replay_events()` 生成 A03–A06 Evidence。Spring/SOS 的第 1 个后续有效日先进入 WAITING 状态；第 1–15 日寻找测试/LPS，第 16 日才允许 EXPIRED。失效转换的 from 始终是事件当前状态，终态不会追加后续转换。测试改为 replay 事件列表与 scan Evidence 严格相等，不使用 WATCH 兜底断言。
