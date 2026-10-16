@@ -6,7 +6,7 @@ import strategy_a
 
 def bars(n=100, breakout=False):
     dates=pd.date_range("2025-01-02",periods=n,freq="B")
-    close=np.full(n,100.0); close[:80]=100+np.sin(np.arange(80))*1.5
+    close=np.full(n,100.0); close[:min(80,n)]=100+np.sin(np.arange(min(80,n)))*1.5
     if breakout: close[-1]=110
     open_=close.copy(); high=close+1; low=close-1; vol=np.full(n,1000.); amount=vol*close
     if breakout: high[-1]=111; low[-1]=99; vol[-1]=2500
@@ -33,7 +33,7 @@ def test_sos_and_background_do_not_create_buy_signal():
 def test_zero_volume_is_not_fabricated():
     f=bars(); f.loc[50:55,"vol"]=0
     rows=strategy_a.scan("X","2025-05-21",f)
-    assert all(x.evidence["parameters"]["threshold_version"]=="A-E4-2026-01" for x in rows)
+    assert all(x.evidence["threshold_version"]=="A-E4-2026-01" for x in rows)
 
 def test_strategy_is_idempotent_and_namespaced():
     f=bars(); a=strategy_a.scan("X","2025-05-21",f); b=strategy_a.scan("X","2025-05-21",f)
