@@ -4,7 +4,12 @@ from stock_filter import filter_stock
 from market import assess
 from announcement import fetch as fetch_ann, analyze as ann_analyze
 from news import fetch as fetch_news, analyze as news_analyze
+from signals import migrate, list_signals, resonance
+import os, sqlite3
 app=Flask(__name__)
+
+def _p1rows(strategy=None):
+ c=sqlite3.connect(__import__('data').DB_PATH); migrate(c); return list_signals(c,strategy)
 @app.route('/')
 def index():
  df,error=get_stock_data(); market=assess(daily=df) if not df.empty else {'state':'无法判断','factor':0,'trend':0,'breadth':0,'amount_change':0,'reason':'市场环境数据缺失'}
@@ -16,6 +21,18 @@ def update(): return jsonify(start_update())
 def turnover_backfill(): return jsonify(start_turnover_backfill())
 @app.get('/admin/update/status')
 def update_status(): return jsonify(status())
+@app.get('/strategy/a')
+def strategy_a(): return render_template('strategy.html',title='策略 A：威科夫×操盘手2',rows=_p1rows('A_WYCKOFF_VOLUME'))
+@app.get('/strategy/b')
+def strategy_b(): return render_template('strategy.html',title='策略 B：野人哥独立体系',rows=_p1rows('B_YEREN'))
+@app.get('/strategy/resonance')
+def strategy_resonance():
+ c=sqlite3.connect(__import__('data').DB_PATH); migrate(c); return render_template('strategy.html',title='双策略共振',rows=resonance(c))
+@app.get('/data-health')
+def data_health():
+ import os
+ c=sqlite3.connect(__import__('data').DB_PATH); migrate(c); row=c.execute('SELECT COUNT(*),MIN(trade_date),MAX(trade_date),SUM(turnover_rate IS NULL) FROM daily').fetchone() if os.path.exists(__import__('data').DB_PATH) else (0,None,None,0)
+ return render_template('health.html',db_exists=os.path.exists(__import__('data').DB_PATH),coverage=f'{row[1]} - {row[2]}',symbols=c.execute('SELECT COUNT(DISTINCT ts_code) FROM daily').fetchone()[0] if row[0] else 0,missing_turnover=row[3])
 @app.route('/stock/<ts_code>')
 def stock_detail(ts_code):
  stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
