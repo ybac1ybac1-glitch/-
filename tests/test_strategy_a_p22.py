@@ -48,3 +48,15 @@ def test_zero_volume_and_bad_price_are_conservative():
 def test_idempotent():
     f=bars(); a=strategy_a.scan("X","2025-05-21",f); b=strategy_a.scan("X","2025-05-21",f)
     assert [e.to_dict() for e in a]==[e.to_dict() for e in b]
+
+def test_replay_events_have_stable_independent_lifecycles():
+    f=bars(); f.loc[90,["low","close","vol"]]=[95,100,500]
+    f.loc[100,["close","high","vol"]]=[103,104,3000]
+    events=strategy_a.replay_events("X",f,f.trade_date.iloc[-1])
+    assert all({"event_id","event_date","event_type","threshold_version","current_state","transition_history"} <= set(e) for e in events)
+    ids=[e["event_id"] for e in events]
+    assert len(ids)==len(set(ids))
+    for e in events:
+        assert e["event_id"].startswith("A_WYCKOFF_VOLUME:X:")
+        assert e["transition_history"][0]["date"]==e["event_date"]
+        assert all(pd.Timestamp(h["date"])>=pd.Timestamp(e["event_date"]) for h in e["transition_history"])
