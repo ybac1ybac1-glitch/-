@@ -5,7 +5,7 @@ from collections import Counter
 from urllib.parse import quote
 import pandas as pd
 from strategy_a import scan
-REQUIRED=("ts_code","trade_date","open","high","low","close","vol","amount"); MAX_STORED=10000
+REQUIRED=("ts_code","trade_date","open","high","low","close","vol","amount"); MAX_STORED=100000
 _task_lock=threading.Lock(); _state={"status":"IDLE","processed":0,"scanned":0,"total":0,"failed":0,"abnormal":0,"no_bar_on_asof":0,"asof_date":None,"error":"","result":None}
 def _connect(path):
  c=sqlite3.connect("file:"+quote(str(path),safe="/\\:")+"?mode=ro",uri=True);c.execute("PRAGMA query_only=ON");return c
@@ -41,10 +41,10 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
    except ValueError as e:return {"errors":[str(e)]}
    if cutoff>pd.Timestamp.now(tz="UTC").tz_localize(None):return {"errors":["asof_date不能是未来日期"]}
   out["asof_date"]=asof
-  # Formal replay requires a completed cached date when task metadata exists.
-  if "history_date_tasks" in tables:
-   row=c.execute("select status from history_date_tasks where trade_date=?",(asof,)).fetchone()
-   if row and row[0] not in ("TURNOVER_COMPLETE","OHLCV_COMPLETE"): out["errors"]=[f"{asof}: 历史初始化未完成"]; return out
+  if "history_date_tasks" not in tables: out["errors"]=["UNVERIFIED: 缺少history_date_tasks"]; return out
+  row=c.execute("select status,turnover_state,ohlcv_state from history_date_tasks where trade_date=?",(asof,)).fetchone()
+  if not row: out["errors"]=[f"{asof}: UNVERIFIED，无完整性记录"]; return out
+  if row[0] not in ("TURNOVER_COMPLETE","OHLCV_COMPLETE") or (row[1] not in ("TURNOVER_COMPLETE","OHLCV_COMPLETE")): out["errors"]=[f"{asof}: 历史行情或换手率未验证完整"]; return out
   codes=[r[0] for r in c.execute("select distinct ts_code from daily order by ts_code")];out["total"]=len(codes)
   stored=[];out["truncated"]=False
   for start_i in range(0,len(codes),int(batch_size)):
@@ -66,7 +66,7 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
      out["failed"]+=1
      if len(out["errors"])<20:out["errors"].append(f"{code}: {e}")
     if progress:progress(out)
-  offset=max(0,(int(page)-1)*int(max_results));out["results"]=stored[offset:offset+int(max_results)];out["returned_matches"]=len(out["results"]);out["truncated"]=out["truncated"] or out["total_matches"]>len(stored);out["rule_hits"]=dict(out["rule_hits"])
+  stored.sort(key=lambda x:x["ts_code"]); out["truncated"]=len(stored)>=MAX_STORED and out["total_matches"]>len(stored); out["results"]=stored; out["returned_matches"]=len(stored); out["rule_hits"]=dict(out["rule_hits"])
  finally:c.close()
  return out
 def start(path,asof_date=None,batch_size=100,max_results=200):
