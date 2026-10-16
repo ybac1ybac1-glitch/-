@@ -84,7 +84,11 @@ def start_update(max_days=120):
  def runner():
   try: _run_update(max_days)
   finally: _task_lock.release()
- _thread=threading.Thread(target=runner,daemon=True); _thread.start(); return status()
+ try:
+  _thread=threading.Thread(target=runner,daemon=True); _thread.start()
+ except Exception as exc:
+  _status['last_error']=str(exc); _task_lock.release()
+ return status()
 
 
 def _run_turnover_backfill():
@@ -104,8 +108,12 @@ def _run_turnover_backfill():
 def start_turnover_backfill():
  global _turnover_thread
  if not _task_lock.acquire(False): _status['task_rejected']+=1; return status()
- if _status.get('running') or _status.get('turnover_running') or (_turnover_thread and _turnover_thread.is_alive()): return status()
+ if _status.get('running') or _status.get('turnover_running') or (_turnover_thread and _turnover_thread.is_alive()): _status['task_rejected']+=1; _task_lock.release(); return status()
  def runner():
   try: _run_turnover_backfill()
   finally: _task_lock.release()
- _turnover_thread=threading.Thread(target=runner,daemon=True); _turnover_thread.start(); return status()
+ try:
+  _turnover_thread=threading.Thread(target=runner,daemon=True); _turnover_thread.start()
+ except Exception as exc:
+  _status['turnover_error']=str(exc); _task_lock.release()
+ return status()
