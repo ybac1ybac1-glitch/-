@@ -7,6 +7,7 @@ from news import fetch as fetch_news, analyze as news_analyze
 from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
 from validation import validate_cache,start as start_validation,status as validation_status,get_results
+from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results
 import os, sqlite3
 app=Flask(__name__)
 
@@ -82,3 +83,22 @@ def stock_detail(ts_code):
  from wyckoff import analyze
  return render_template('detail.html',stock=info,analysis=analyze(frames['daily']),frames={k:v.tail(120).to_dict('records') for k,v in frames.items()},ann=ann_analyze(fetch_ann(ts_code,pro)),news=news_analyze(fetch_news(ts_code,pro)),error='')
 if __name__=='__main__': app.run(host='127.0.0.1',port=8000,debug=False)
+
+@app.get('/strategy/a/v4')
+def strategy_a_v4():
+ return render_template('strategy_a_v4.html',status=a_web_status(),result=a_web_results(os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3')))
+@app.post('/strategy/a/v4/start')
+def strategy_a_v4_start():
+ from flask import request
+ import data
+ q=request.get_json(silent=True) or request.form or request.args
+ try: max_stocks=int(q.get('max_stocks')) if q.get('max_stocks') else None
+ except Exception:return jsonify({'error':'max_stocks无效'}),400
+ return jsonify(start_a_web(data.DB_PATH,os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3'),q.get('asof_date'),max_stocks=max_stocks)[0]),202
+@app.get('/strategy/a/v4/status')
+def strategy_a_v4_status(): return jsonify(a_web_status())
+@app.get('/strategy/a/v4/results')
+def strategy_a_v4_results():
+ from flask import request
+ try:return jsonify(a_web_results(os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3'),int(request.args.get('page',1)),int(request.args.get('page_size',100)),request.args.get('rule_id'),request.args.get('state')))
+ except ValueError:return jsonify({'error':'分页参数无效'}),400
