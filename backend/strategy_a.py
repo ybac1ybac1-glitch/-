@@ -45,8 +45,6 @@ def replay_events(symbol, frame, asof_date=None):
      e["current_state"]="WAITING_TEST"; e["transition_history"].append({"date":jd,"from":"CANDIDATE","to":"WAITING_TEST","reason":"await_test"})
     if x.close.iloc[j] < support*(1-PARAMS["lps_tolerance"]):
      e["current_state"]="INVALIDATED"; e["invalidation_reason"]="support_broken"; e["transition_history"].append({"date":jd,"from":"WAITING_TEST","to":"INVALIDATED","reason":"support_broken"}); break
-    if e["current_state"]=="WAITING_TEST":
-     e["current_state"]="WAITING_TEST"; e["transition_history"].append({"date":jd,"from":"CANDIDATE","to":"WAITING_TEST","reason":"await_test"})
     if x.low.iloc[j] >= support*(1-PARAMS["lps_tolerance"]) and baseline>0 and x.vol.iloc[j] <= baseline*PARAMS["test_volume_ratio"]:
      e["current_state"]="TEST_CANDIDATE"; e["transition_history"].append({"date":jd,"from":"WAITING_TEST","to":"TEST_CANDIDATE","reason":"low_volume_test"}); break
    else:
@@ -62,9 +60,9 @@ def replay_events(symbol, frame, asof_date=None):
   e={"event_id":_event_id(symbol,"A05",d),"event_date":d,"event_type":"SOS","frozen_support":r.get("support"),"frozen_resistance":pressure,"frozen_volume_baseline":float(av),"threshold_version":THRESHOLD_VERSION,"current_state":"CANDIDATE","transition_history":[{"date":d,"from":None,"to":"CANDIDATE","reason":"pressure_break"}],"invalidation_reason":""}
   for j in range(i+1,len(x)):
    jd=x.trade_date.iloc[j].date().isoformat()
+   if e["current_state"]=="CANDIDATE": e["current_state"]="WAITING_LPS"; e["transition_history"].append({"date":jd,"from":"CANDIDATE","to":"WAITING_LPS","reason":"await_lps"})
    if x.close.iloc[j] < pressure*(1-PARAMS["lps_tolerance"]):
     e["current_state"]="INVALIDATED"; e["invalidation_reason"]="breakout_support_lost"; e["transition_history"].append({"date":jd,"from":"WAITING_LPS","to":"INVALIDATED","reason":"support_broken"}); break
-   if e["current_state"]=="CANDIDATE": e["current_state"]="WAITING_LPS"; e["transition_history"].append({"date":jd,"from":"CANDIDATE","to":"WAITING_LPS","reason":"await_lps"})
    vr=x.vol.iloc[j]/max(av,1e-12)
    if x.low.iloc[j]<=pressure*(1+PARAMS["lps_tolerance"]) and x.close.iloc[j]>=pressure*(1-PARAMS["lps_tolerance"]) and vr<=PARAMS["lps_volume_ratio"]:
     e["current_state"]="LPS_CANDIDATE"; e["transition_history"].append({"date":jd,"from":"WAITING_LPS","to":"LPS_CANDIDATE","reason":"low_volume_retest"}); break
