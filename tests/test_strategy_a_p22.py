@@ -44,7 +44,7 @@ def test_background_rules_never_buy():
 def test_zero_volume_and_bad_price_are_conservative():
     f=bars(); f.loc[50:55,"vol"]=0; f.loc[60,"close"]=0
     rows=strategy_a.scan("X","2025-05-21",f)
-    assert all(e.evidence["threshold_version"]=="A-E4-2026-02" for e in rows)
+    assert all(e.evidence["threshold_version"]=="A-E4-2026-03" for e in rows)
 def test_idempotent():
     f=bars(); a=strategy_a.scan("X","2025-05-21",f); b=strategy_a.scan("X","2025-05-21",f)
     assert [e.to_dict() for e in a]==[e.to_dict() for e in b]
