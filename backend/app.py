@@ -4,7 +4,15 @@ from stock_filter import filter_stock
 from market import assess
 from announcement import fetch as fetch_ann, analyze as ann_analyze
 from news import fetch as fetch_news, analyze as news_analyze
+from signals import migrate, list_signals, resonance
+import os, sqlite3
 app=Flask(__name__)
+
+def _p1rows(strategy=None):
+ c=sqlite3.connect(__import__('data').DB_PATH)
+ try:
+  migrate(c); return list_signals(c,strategy)
+ finally: c.close()
 @app.route('/')
 def index():
  df,error=get_stock_data(); market=assess(daily=df) if not df.empty else {'state':'无法判断','factor':0,'trend':0,'breadth':0,'amount_change':0,'reason':'市场环境数据缺失'}
@@ -16,6 +24,32 @@ def update(): return jsonify(start_update())
 def turnover_backfill(): return jsonify(start_turnover_backfill())
 @app.get('/admin/update/status')
 def update_status(): return jsonify(status())
+@app.get('/strategy/a')
+def strategy_a(): return render_template('strategy.html',title='策略 A：威科夫×操盘手2',rows=_p1rows('A_WYCKOFF_VOLUME'))
+@app.get('/strategy/b')
+def strategy_b(): return render_template('strategy.html',title='策略 B：野人哥独立体系',rows=_p1rows('B_YEREN'))
+@app.get('/strategy/resonance')
+def strategy_resonance():
+ c=sqlite3.connect(__import__('data').DB_PATH)
+ try:
+  migrate(c); rows=resonance(c)
+ finally: c.close()
+ return render_template('strategy.html',title='双策略共振',rows=rows)
+@app.get('/data-health')
+def data_health():
+ import os
+ path=__import__('data').DB_PATH; exists=os.path.exists(path); row=(0,None,None,0); symbols=0; per_stock=(0,0); missing={}
+ if exists:
+  c=sqlite3.connect(path); tables={x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+  if 'daily' in tables:
+   cols={r[1] for r in c.execute('PRAGMA table_info(daily)')}; row=c.execute('SELECT COUNT(DISTINCT trade_date),MIN(trade_date),MAX(trade_date),0 FROM daily').fetchone(); symbols=c.execute('SELECT COUNT(DISTINCT ts_code) FROM daily').fetchone()[0]; per_stock=c.execute('SELECT COALESCE(MIN(n),0),COALESCE(MAX(n),0) FROM (SELECT ts_code,COUNT(DISTINCT trade_date) n FROM daily GROUP BY ts_code)').fetchone()
+   for col in ('open','high','low','close','vol','amount','turnover_rate'):
+    if col not in cols: missing[col]='数据不足'
+    else: missing[col]=c.execute(f'SELECT COUNT(*) FROM daily WHERE {col} IS NULL').fetchone()[0]
+   if 'turnover_rate' in cols: row=(row[0],row[1],row[2],c.execute('SELECT COUNT(*) FROM daily WHERE turnover_rate IS NULL').fetchone()[0])
+  c.close()
+ coverage=f'{row[1]} - {row[2]}' if row[0] else '数据不足'
+ return render_template('health.html',db_exists=exists,coverage=coverage,symbols=symbols,missing_turnover=row[3] if row[0] else '数据不足',missing=missing,requirements={'80':row[0]>=80,'120':row[0]>=120,'240':row[0]>=240},global_days=row[0],min_stock_days=per_stock[0],max_stock_days=per_stock[1])
 @app.route('/stock/<ts_code>')
 def stock_detail(ts_code):
  stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
