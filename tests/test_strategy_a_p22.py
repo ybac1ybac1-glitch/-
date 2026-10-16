@@ -64,3 +64,14 @@ def test_replay_events_have_stable_independent_lifecycles():
         assert e["event_id"].startswith("A_WYCKOFF_VOLUME:X:")
         assert e["transition_history"][0]["date"]==e["event_date"]
         assert all(pd.Timestamp(h["date"])>=pd.Timestamp(e["event_date"]) for h in e["transition_history"])
+
+def test_transition_chain_has_no_duplicate_or_future_states():
+    f=bars(); f.loc[90,["low","close","vol"]]=[95,100,500]; f.loc[95,["low","close","vol"]]=[100,100,500]
+    events=strategy_a.replay_events("X",f,f.trade_date.iloc[100])
+    for e in events:
+        h=e["transition_history"]
+        assert all(h[i]["from"]==h[i-1]["to"] for i in range(1,len(h)))
+        assert all(h[i]["to"]!=h[i]["from"] for i in range(len(h)))
+        assert all(pd.Timestamp(z["date"])<=f.trade_date.iloc[100] for z in h)
+        if e["current_state"] in {"INVALIDATED","EXPIRED","TEST_CANDIDATE","LPS_CANDIDATE"}:
+            assert e["transition_history"][-1]["to"]==e["current_state"]
