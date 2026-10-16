@@ -37,7 +37,8 @@ def validate_cache(path,asof_date=None,batch_size=100):
   if parsed.empty:out["errors"]=["没有可解析的交易日"];return out
   if asof_date is None: cutoff=parsed.max(); asof=cutoff.strftime("%Y%m%d")
   else:
-   cutoff,asof=_date(asof_date)
+   try: cutoff,asof=_date(asof_date)
+   except ValueError as e: out["errors"]=[str(e)]; return out
    if cutoff>pd.Timestamp.now(tz="UTC").tz_localize(None):out["errors"]=["asof_date不能是未来日期"];return out
   out["asof_date"]=asof
   codes=[r[0] for r in c.execute("SELECT DISTINCT ts_code FROM daily ORDER BY ts_code")]
