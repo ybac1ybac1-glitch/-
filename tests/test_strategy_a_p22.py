@@ -80,3 +80,48 @@ def test_transition_chain_has_no_duplicate_or_future_states():
         assert all(pd.Timestamp(z["date"])<=f.trade_date.iloc[100] for z in h)
         if e["current_state"] in {"INVALIDATED","EXPIRED","TEST_CANDIDATE","LPS_CANDIDATE"}:
             assert e["transition_history"][-1]["to"]==e["current_state"]
+
+def test_spring_scan_states_at_event_and_test_dates():
+    f=bars(); f.loc[90,["low","close","vol"]]=[95,100,500]; f.loc[93,["low","close","vol"]]=[100,100,500]
+    spring_day=f.trade_date.iloc[90]; test_day=f.trade_date.iloc[93]
+    spring=rule(strategy_a.scan("X",spring_day,f),"A03")
+    tested=rule(strategy_a.scan("X",test_day,f),"A04")
+    events=strategy_a.replay_events("X",f,test_day)
+    se=[e for e in events if e["event_type"]=="SPRING" and e["event_date"]==spring_day.date().isoformat()]
+    assert len(se)==1
+    assert spring.state=="CANDIDATE"
+    assert tested.state=="CANDIDATE"
+    assert tested.evidence["event_id"]==se[0]["event_id"]
+    assert any(h["to"]=="TEST_CANDIDATE" and h["date"]==test_day.date().isoformat() for h in se[0]["transition_history"])
+
+def test_sos_lps_scan_states_and_event_link():
+    f=bars(); f.loc[100,["close","high","low","vol"]]=[105,106,99,3000]
+    f.loc[103,["close","high","low","vol"]]=[102,103,101,500]
+    sos_day=f.trade_date.iloc[100]; lps_day=f.trade_date.iloc[103]
+    events=strategy_a.replay_events("X",f,lps_day)
+    sos=[e for e in events if e["event_type"]=="SOS" and e["event_date"]==sos_day.date().isoformat()]
+    assert len(sos)==1
+    assert any(h["to"]=="LPS_CANDIDATE" and h["date"]==lps_day.date().isoformat() for h in sos[0]["transition_history"])
+    assert rule(strategy_a.scan("X",sos_day,f),"A05").state=="CANDIDATE"
+    lps=rule(strategy_a.scan("X",lps_day,f),"A06")
+    assert lps.state=="CANDIDATE"
+    assert lps.evidence["event_id"]==sos[0]["event_id"]
+
+def test_spring_timeout_15th_and_16th_boundaries():
+    f=bars(110); f.loc[80,["low","close","vol"]]=[95,100,500]
+    # Keep all 15 sessions after the event neutral, then add the 16th.
+    fifteenth=f.trade_date.iloc[95]; sixteenth=f.trade_date.iloc[96]
+    e15=[e for e in strategy_a.replay_events("X",f,fifteenth) if e["event_type"]=="SPRING"]
+    e16=[e for e in strategy_a.replay_events("X",f,sixteenth) if e["event_type"]=="SPRING"]
+    assert len(e15)==1 and e15[0]["current_state"]!="EXPIRED"
+    assert len(e16)==1 and e16[0]["current_state"]=="EXPIRED"
+    assert e16[0]["transition_history"][-1]["date"]==sixteenth.date().isoformat()
+
+def test_sos_timeout_15th_and_16th_boundaries():
+    f=bars(125); f.loc[80,["close","high","low","vol"]]=[105,106,99,3000]
+    fifteenth=f.trade_date.iloc[95]; sixteenth=f.trade_date.iloc[96]
+    e15=[e for e in strategy_a.replay_events("X",f,fifteenth) if e["event_type"]=="SOS"]
+    e16=[e for e in strategy_a.replay_events("X",f,sixteenth) if e["event_type"]=="SOS"]
+    assert len(e15)==1 and e15[0]["current_state"]!="EXPIRED"
+    assert len(e16)==1 and e16[0]["current_state"]=="EXPIRED"
+    assert e16[0]["transition_history"][-1]["date"]==sixteenth.date().isoformat()
