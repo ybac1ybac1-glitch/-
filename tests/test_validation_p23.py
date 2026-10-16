@@ -7,7 +7,7 @@ from validation import validate_cache
 def make_db(path):
  c=sqlite3.connect(path); c.execute("CREATE TABLE daily(ts_code TEXT,trade_date TEXT,open REAL,high REAL,low REAL,close REAL,vol REAL,amount REAL)")
  rows=[("X","20250101",100,101,99,100,1000,100000)]*2
- c.executemany("INSERT INTO daily VALUES (?,?,?,?,?,?,?,?)",rows); c.commit(); c.close()
+ c.executemany("INSERT INTO daily VALUES (?,?,?,?,?,?,?,?)",rows); c.execute("CREATE TABLE history_date_tasks(trade_date TEXT PRIMARY KEY,status TEXT,turnover_state TEXT,ohlcv_state TEXT)"); c.execute("INSERT INTO history_date_tasks VALUES(?,?,?,?)",("20250101","TURNOVER_COMPLETE","TURNOVER_COMPLETE","OHLCV_COMPLETE")); c.commit(); c.close()
 def test_read_only_and_batch_scan(tmp_path):
  p=str(tmp_path/"m.sqlite3"); make_db(p)
  r=validate_cache(p,"20250101",batch_size=1)
