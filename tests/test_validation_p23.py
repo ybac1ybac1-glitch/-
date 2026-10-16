@@ -47,3 +47,35 @@ def test_readonly_connection_rejects_write(tmp_path):
   except Exception: pass
   else: raise AssertionError("readonly connection allowed write")
  finally: c.close()
+
+def test_verified_date_states_are_required(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ import validation
+ for state in ["FAILED","PARTIAL_MISSING","PENDING_VERIFY"]:
+  c=sqlite3.connect(p); c.execute("update history_date_tasks set status=?,ohlcv_state=?,turnover_state=?",(state,"OHLCV_COMPLETE","TURNOVER_COMPLETE")); c.commit(); c.close()
+  assert validate_cache(p,"20250101")["errors"]
+ c=sqlite3.connect(p); c.execute("update history_date_tasks set status='TURNOVER_COMPLETE',ohlcv_state='OHLCV_COMPLETE',turnover_state='TURNOVER_COMPLETE'"); c.commit(); c.close()
+ assert validate_cache(p,"20250101")["asof_date"]=="20250101"
+
+def test_default_date_skips_newer_unverified(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p); c=sqlite3.connect(p)
+ c.execute("insert into daily values (?,?,?,?,?,?,?,?)",("X","20250102",100,101,99,100,1000,100000))
+ c.commit(); c.close()
+ r=validate_cache(p); assert r["asof_date"]=="20250101"
+
+def test_status_is_compact_and_results_snapshot_separate(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ import validation
+ validation._state.update(status="COMPLETED",processed=1,total=1,result={"results":[{"ts_code":"X"}]})
+ assert "result" not in validation.status()
+ assert validation.get_results(1,1)["returned_matches"]==1
+
+def test_processed_counts_failed_stock(tmp_path,monkeypatch):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ import validation
+ original=validation.scan
+ def fail(*args,**kwargs): raise RuntimeError("synthetic failure")
+ monkeypatch.setattr(validation,"scan",fail)
+ r=validate_cache(p,"20250101")
+ assert r["processed"]==r["total"]==1 and r["failed"]==1
+ monkeypatch.setattr(validation,"scan",original)
