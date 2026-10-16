@@ -1,0 +1,1 @@
+<!doctype html><meta charset="utf-8"><title>{{title}}</title><h1>{{title}}</h1><p>仅供盘后研究，不构成投资建议。</p>{% if not rows %}<p>暂无信号数据。缺失数据不会自动生成候选。</p>{% else %}<ul>{% for row in rows %}<li>{{row}}</li>{% endfor %}</ul>{% endif %}
