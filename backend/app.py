@@ -41,7 +41,14 @@ def strategy_a_validate_start():
  result, code = start(data.DB_PATH,q.get('asof_date'),batch,max_results)
  return jsonify(result),code
 @app.get('/strategy/a/validate/results')
-def strategy_a_validate_results(): return jsonify(validation_status().get('result') or {'status':validation_status()['status']})
+def strategy_a_validate_results():
+ from flask import request
+ try: page=int(request.args.get('page',1)); size=int(request.args.get('page_size',100))
+ except Exception:return jsonify({'error':'page/page_size必须为整数'}),400
+ if page<1 or size<1 or size>10000:return jsonify({'error':'page>=1且page_size为1-10000'}),400
+ result=validation_status().get('result')
+ if not result:return jsonify({'status':validation_status()['status'],'results':[]})
+ r=dict(result); all_rows=result.get('results',[]); start=(page-1)*size; r['results']=all_rows[start:start+size]; r['returned_matches']=len(r['results']); r['page']=page; r['page_size']=size; return jsonify(r)
 @app.get('/strategy/a')
 def strategy_a(): return render_template('strategy.html',title='策略 A：威科夫×操盘手2',rows=_p1rows('A_WYCKOFF_VOLUME'))
 @app.get('/strategy/b')
