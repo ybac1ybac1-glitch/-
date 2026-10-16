@@ -5,7 +5,7 @@ sys.path.insert(0,str(Path(__file__).parents[1]/"backend"))
 import strategy_a
 
 def bars(n=120):
-    d=pd.date_range("2025-01-02",periods=n,freq="B"); c=np.full(n,100.); c[:80]=100+np.sin(np.arange(80))*1.5
+    d=pd.date_range("2025-01-02",periods=n,freq="B"); c=np.full(n,100.); c[:min(80,n)]=100+np.sin(np.arange(min(80,n)))*1.5
     return pd.DataFrame({"trade_date":d,"open":c,"high":c+1,"low":c-1,"close":c,"vol":np.full(n,1000.),"amount":c*1000})
 def rule(rows,r): return next(x for x in rows if x.rule_id==r)
 def test_future_and_namespace():
