@@ -12,3 +12,8 @@ python -c "from validation import validate_cache; import json; print(json.dumps(
 ```
 
 网页 JSON 接口：`GET /strategy/a/validate?asof_date=YYYYMMDD&batch_size=100`。输出扫描股票数、数据不足、规则命中、异常和失败原因。结果是研究候选证据，不是可成交买点。Codex CI 使用临时 SQLite 和合成行情，未执行用户本机真实验证。
+
+
+## 日期与结果安全
+
+复盘日期必须为 YYYYMMDD；缺省时取 daily 中最大可解析交易日。未来日期和无效日期被拒绝。每只股票若没有 asof_date 当日 K 线，标记 NO_BAR_ON_ASOF，不以前一日冒充。当日结果仅保留命中规则的精简信号摘要、统计计数和最多 20 条错误样本，完整事件历史不进入全量 results。
