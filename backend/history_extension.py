@@ -33,9 +33,10 @@ def run(limit=360):
     try:
      basic=data._call('daily_basic',trade_date=day,fields='ts_code,trade_date,turnover_rate')
      if basic is not None and not basic.empty and 'turnover_rate' in basic:
-      basic=basic.drop_duplicates(['ts_code','trade_date'],keep='last'); frame=frame.merge(basic[['ts_code','trade_date','turnover_rate']],on=['ts_code','trade_date'],how='left'); turnover_rows=int(frame.turnover_rate.notna().sum()); expected=set(frame.ts_code.astype(str)); provided=set(basic.loc[basic.turnover_rate.notna(),'ts_code'].astype(str));
-      if provided==expected and len(basic)==len(provided): turnover_state='TURNOVER_COMPLETE'
-      else: turnover_state='PARTIAL_MISSING'; err=f'daily_basic覆盖{len(provided)}/{len(expected)}，缺失或重复需复核'
+      raw_keys=basic[['ts_code','trade_date']].astype(str); has_duplicates=raw_keys.duplicated(keep=False).any(); basic=basic.drop_duplicates(['ts_code','trade_date'],keep='last'); frame=frame.merge(basic[['ts_code','trade_date','turnover_rate']],on=['ts_code','trade_date'],how='left'); turnover_rows=int(frame.turnover_rate.notna().sum()); expected=set(frame.ts_code.astype(str)); provided=set(basic.loc[basic.turnover_rate.notna(),'ts_code'].astype(str));
+      if has_duplicates: turnover_state='PENDING_VERIFY'; err='daily_basic存在重复键，无法验证完整性'
+      elif provided==expected and len(basic)==len(provided): turnover_state='TURNOVER_COMPLETE'
+      else: turnover_state='PARTIAL_MISSING'; err=f'daily_basic覆盖{len(provided)}/{len(expected)}，缺失需复核'
      else:err='daily_basic空或缺字段';turnover_state='PENDING_VERIFY'
     except Exception as exc:err=f'daily_basic失败: {exc}';turnover_state='PARTIAL_MISSING'
     _insert_missing(c,frame);status='TURNOVER_COMPLETE' if turnover_state=='TURNOVER_COMPLETE' else 'PARTIAL_MISSING';c.execute('INSERT OR REPLACE INTO history_date_tasks VALUES(?,?,?,?,?,?,?,?)',(day,'OHLCV_COMPLETE',turnover_state,status,ohlcv_rows,turnover_rows,err,datetime.now().isoformat()));c.commit()
