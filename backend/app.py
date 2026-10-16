@@ -31,8 +31,17 @@ def strategy_resonance():
 @app.get('/data-health')
 def data_health():
  import os
- c=sqlite3.connect(__import__('data').DB_PATH); migrate(c); row=c.execute('SELECT COUNT(*),MIN(trade_date),MAX(trade_date),SUM(turnover_rate IS NULL) FROM daily').fetchone() if os.path.exists(__import__('data').DB_PATH) else (0,None,None,0)
- return render_template('health.html',db_exists=os.path.exists(__import__('data').DB_PATH),coverage=f'{row[1]} - {row[2]}',symbols=c.execute('SELECT COUNT(DISTINCT ts_code) FROM daily').fetchone()[0] if row[0] else 0,missing_turnover=row[3])
+ path=__import__('data').DB_PATH; exists=os.path.exists(path); row=(0,None,None,0); symbols=0; missing={}
+ if exists:
+  c=sqlite3.connect(path); tables={x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+  if 'daily' in tables:
+   row=c.execute('SELECT COUNT(*),MIN(trade_date),MAX(trade_date),SUM(turnover_rate IS NULL) FROM daily').fetchone(); symbols=c.execute('SELECT COUNT(DISTINCT ts_code) FROM daily').fetchone()[0]
+   for col in ('open','high','low','close','vol','amount','turnover_rate'):
+    try: missing[col]=c.execute(f'SELECT COUNT(*) FROM daily WHERE {col} IS NULL').fetchone()[0]
+    except sqlite3.OperationalError: missing[col]=None
+  c.close()
+ coverage=f'{row[1]} - {row[2]}' if row[0] else '数据不足'
+ return render_template('health.html',db_exists=exists,coverage=coverage,symbols=symbols,missing_turnover=row[3] if row[0] else '数据不足',missing=missing,requirements={'80':row[0]>=80,'120':row[0]>=120,'240':row[0]>=240})
 @app.route('/stock/<ts_code>')
 def stock_detail(ts_code):
  stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
