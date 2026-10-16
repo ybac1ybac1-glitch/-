@@ -15,6 +15,23 @@ def _date(v):
  d=pd.to_datetime(s,format="%Y%m%d",errors="coerce")
  if pd.isna(d):raise ValueError("asof_date无效")
  return d,s
+def _resolve_asof(c,tables,raw,requested=None):
+ if "history_date_tasks" not in tables: raise ValueError("UNVERIFIED: 缺少history_date_tasks")
+ if requested is not None:
+  cutoff,asof=_date(requested)
+  if cutoff>pd.Timestamp.now(tz="UTC").tz_localize(None): raise ValueError("asof_date不能是未来日期")
+  row=c.execute("select status,ohlcv_state,turnover_state from history_date_tasks where trade_date=?",(asof,)).fetchone()
+  if not row: raise ValueError(f"{asof}: UNVERIFIED，无完整性记录")
+  status,ohlcv,turnover=row
+  if status in ("FAILED","PARTIAL_MISSING","PENDING_VERIFY") or ohlcv!="OHLCV_COMPLETE" or turnover!="TURNOVER_COMPLETE": raise ValueError(f"{asof}: 历史完整性未验证")
+  if asof not in {str(x) for x in raw}: raise ValueError(f"{asof}: daily无行情")
+  return cutoff,asof
+ rows=c.execute("select trade_date,status,ohlcv_state,turnover_state from history_date_tasks order by trade_date desc").fetchall()
+ for day,status,ohlcv,turnover in rows:
+  if status not in ("FAILED","PARTIAL_MISSING","PENDING_VERIFY") and ohlcv=="OHLCV_COMPLETE" and turnover=="TURNOVER_COMPLETE" and str(day) in {str(x) for x in raw}:
+   return pd.to_datetime(str(day),format="%Y%m%d"),str(day)
+ raise ValueError("没有经过完整性验证且存在行情的交易日")
+
 def _compact(rows):
  out=[]
  for e in rows:
@@ -35,20 +52,9 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
   if miss:out["errors"]=["缺少字段:"+",".join(miss)];return out
   raw=[r[0] for r in c.execute("select distinct trade_date from daily")];parsed=pd.to_datetime(pd.Series(raw).astype(str),format="%Y%m%d",errors="coerce").dropna()
   if parsed.empty:out["errors"]=["没有可解析的交易日"];return out
-  if asof_date is None:
-   if "history_date_tasks" not in tables: return {"errors":["UNVERIFIED: 缺少history_date_tasks"]}
-   valid=[r[0] for r in c.execute("select trade_date from history_date_tasks where ohlcv_state=? and turnover_state=? order by trade_date desc",("OHLCV_COMPLETE","TURNOVER_COMPLETE")) if str(r[0]) in set(str(x) for x in raw)]
-   if not valid:return {"errors":["没有经过完整性验证且存在行情的交易日"]}
-   asof=str(valid[0]);cutoff=pd.to_datetime(asof,format="%Y%m%d")
-  else:
-   try:cutoff,asof=_date(asof_date)
-   except ValueError as e:return {"errors":[str(e)]}
-   if cutoff>pd.Timestamp.now(tz="UTC").tz_localize(None):return {"errors":["asof_date不能是未来日期"]}
+  try: cutoff,asof=_resolve_asof(c,tables,raw,asof_date)
+  except ValueError as e:return {"errors":[str(e)]}
   out["asof_date"]=asof
-  if "history_date_tasks" not in tables: out["errors"]=["UNVERIFIED: 缺少history_date_tasks"]; return out
-  row=c.execute("select status,turnover_state,ohlcv_state from history_date_tasks where trade_date=?",(asof,)).fetchone()
-  if not row: out["errors"]=[f"{asof}: UNVERIFIED，无完整性记录"]; return out
-  if row[0] not in ("TURNOVER_COMPLETE","OHLCV_COMPLETE") or (row[1] not in ("TURNOVER_COMPLETE","OHLCV_COMPLETE")): out["errors"]=[f"{asof}: 历史行情或换手率未验证完整"]; return out
   codes=[r[0] for r in c.execute("select distinct ts_code from daily order by ts_code")];out["total"]=len(codes)
   stored=[];out["truncated"]=False
   for start_i in range(0,len(codes),int(batch_size)):
