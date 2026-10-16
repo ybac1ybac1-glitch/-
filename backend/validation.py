@@ -49,8 +49,9 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
   stored=[];out["truncated"]=False
   for start_i in range(0,len(codes),int(batch_size)):
    for code in codes[start_i:start_i+int(batch_size)]:
+    out["processed"]+=1
     try:
-     frame=pd.read_sql_query("select * from daily where ts_code=? order by trade_date",c,params=[code]);frame["_dt"]=pd.to_datetime(frame.trade_date.astype(str),format="%Y%m%d",errors="coerce");frame=frame[frame._dt.notna()&(frame._dt<=cutoff)].drop(columns="_dt");out["scanned"]+=1;out["processed"]=out["scanned"]
+     frame=pd.read_sql_query("select * from daily where ts_code=? order by trade_date",c,params=[code]);frame["_dt"]=pd.to_datetime(frame.trade_date.astype(str),format="%Y%m%d",errors="coerce");frame=frame[frame._dt.notna()&(frame._dt<=cutoff)].drop(columns="_dt");out["scanned"]+=1
      if frame.empty:out["insufficient"]+=1;continue
      if not (frame.trade_date.astype(str)==asof).any():out["no_bar_on_asof"]+=1;continue
      bad=((frame[["open","high","low","close"]]<=0).any(axis=1)|(frame.high<frame.low)|(frame.open<frame.low)|(frame.open>frame.high)|(frame.close<frame.low)|(frame.close>frame.high)|(frame.vol<0)|(frame.amount<0)).any()
