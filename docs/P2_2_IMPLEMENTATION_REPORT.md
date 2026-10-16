@@ -21,3 +21,8 @@
 ## 事件生命周期（本轮）
 
 新增 `replay_events()`，为每个历史 Spring/SOS 生成独立稳定 `event_id`，保存事件日期、冻结支撑/压力、量能基准、阈值版本、当前状态、逐日 transition_history 和失效原因。Spring 状态为 CANDIDATE → WAITING_TEST → TEST_CANDIDATE / INVALIDATED / EXPIRED；SOS 状态为 CANDIDATE → WAITING_LPS → LPS_CANDIDATE / INVALIDATED / EXPIRED。事件按日期重放，后续事件不会覆盖已完成事件。`scan()` 接口保持不变，Evidence 继续使用 P1 结构。
+
+
+## scan 与生命周期统一
+
+`scan()` 现在只从 `replay_events()` 读取 A03/A04/A05/A06，并把事件 ID、事件日期、冻结边界和当日 transition 写入 Evidence；历史事件不会被最近事件覆盖。SOS 的 LPS 等待窗口为 `PARAMS['lps_wait_days']=15` 个有效交易日（E4），未达到期限保持 WAITING_LPS，只有超期才 EXPIRED。
