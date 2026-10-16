@@ -30,7 +30,11 @@ def strategy_a(): return render_template('strategy.html',title='策略 A：威�
 def strategy_b(): return render_template('strategy.html',title='策略 B：野人哥独立体系',rows=_p1rows('B_YEREN'))
 @app.get('/strategy/resonance')
 def strategy_resonance():
- c=sqlite3.connect(__import__('data').DB_PATH); migrate(c); return render_template('strategy.html',title='双策略共振',rows=resonance(c))
+ c=sqlite3.connect(__import__('data').DB_PATH)
+ try:
+  migrate(c); rows=resonance(c)
+ finally: c.close()
+ return render_template('strategy.html',title='双策略共振',rows=rows)
 @app.get('/data-health')
 def data_health():
  import os
@@ -38,10 +42,11 @@ def data_health():
  if exists:
   c=sqlite3.connect(path); tables={x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   if 'daily' in tables:
-   row=c.execute('SELECT COUNT(DISTINCT trade_date),MIN(trade_date),MAX(trade_date),SUM(turnover_rate IS NULL) FROM daily').fetchone(); symbols=c.execute('SELECT COUNT(DISTINCT ts_code) FROM daily').fetchone()[0]; per_stock=c.execute('SELECT COALESCE(MIN(n),0),COALESCE(MAX(n),0) FROM (SELECT ts_code,COUNT(DISTINCT trade_date) n FROM daily GROUP BY ts_code)').fetchone()
+   cols={r[1] for r in c.execute('PRAGMA table_info(daily)')}; row=c.execute('SELECT COUNT(DISTINCT trade_date),MIN(trade_date),MAX(trade_date),0 FROM daily').fetchone(); symbols=c.execute('SELECT COUNT(DISTINCT ts_code) FROM daily').fetchone()[0]; per_stock=c.execute('SELECT COALESCE(MIN(n),0),COALESCE(MAX(n),0) FROM (SELECT ts_code,COUNT(DISTINCT trade_date) n FROM daily GROUP BY ts_code)').fetchone()
    for col in ('open','high','low','close','vol','amount','turnover_rate'):
-    try: missing[col]=c.execute(f'SELECT COUNT(*) FROM daily WHERE {col} IS NULL').fetchone()[0]
-    except sqlite3.OperationalError: missing[col]=None
+    if col not in cols: missing[col]='数据不足'
+    else: missing[col]=c.execute(f'SELECT COUNT(*) FROM daily WHERE {col} IS NULL').fetchone()[0]
+   if 'turnover_rate' in cols: row=(row[0],row[1],row[2],c.execute('SELECT COUNT(*) FROM daily WHERE turnover_rate IS NULL').fetchone()[0])
   c.close()
  coverage=f'{row[1]} - {row[2]}' if row[0] else '数据不足'
  return render_template('health.html',db_exists=exists,coverage=coverage,symbols=symbols,missing_turnover=row[3] if row[0] else '数据不足',missing=missing,requirements={'80':row[0]>=80,'120':row[0]>=120,'240':row[0]>=240},global_days=row[0],min_stock_days=per_stock[0],max_stock_days=per_stock[1])
