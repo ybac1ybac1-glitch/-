@@ -31,11 +31,15 @@ def test_spring_requires_valid_range_and_is_candidate_only():
 def test_spring_then_later_test_is_replayed():
     f=bars(); f.loc[90,["low","close","vol"]]=[95,100,500]; f.loc[95,["low","close","vol"]]=[100,100,500]
     rows=strategy_a.scan("X",f.trade_date.iloc[-1],f)
-    e=rule(rows,"A04"); assert e.evidence["spring_date"] or e.state=="WATCH"
+    events=strategy_a.replay_events("X",f,f.trade_date.iloc[-1])
+    assert rule(rows,"A04").evidence["events"] == [e for e in events if e["event_type"]=="SPRING"]
+
 def test_sos_lps_are_not_same_day():
     f=bars(); f.loc[100,["close","high","vol"]]=[103,104,3000]; f.loc[105,["close","high","low","vol"]]=[101,102,100,500]
-    rows=strategy_a.scan("X",f.trade_date.iloc[-1],f); e=rule(rows,"A06")
-    assert e.evidence["sos_date"]=="2025-05-22" or e.state=="WATCH"
+    rows=strategy_a.scan("X",f.trade_date.iloc[-1],f)
+    events=strategy_a.replay_events("X",f,f.trade_date.iloc[-1])
+    assert rule(rows,"A06").evidence["events"] == [e for e in events if e["event_type"]=="SOS"]
+
 def test_lps_without_prior_sos_is_watch():
     e=rule(strategy_a.scan("X","2025-05-21",bars()),"A06"); assert e.state=="WATCH" and not e.evidence["prior_sos"]
 def test_background_rules_never_buy():
