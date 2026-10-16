@@ -6,6 +6,7 @@ from announcement import fetch as fetch_ann, analyze as ann_analyze
 from news import fetch as fetch_news, analyze as news_analyze
 from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
+from validation import validate_cache
 import os, sqlite3
 app=Flask(__name__)
 
@@ -27,6 +28,11 @@ def update(): return jsonify(start_update())
 def turnover_backfill(): return jsonify(start_turnover_backfill())
 @app.get('/admin/update/status')
 def update_status(): return jsonify(status())
+@app.get('/strategy/a/validate')
+def strategy_a_validate():
+ from flask import request
+ import data
+ return jsonify(validate_cache(data.DB_PATH, request.args.get('asof_date'), int(request.args.get('batch_size',100))))
 @app.get('/strategy/a')
 def strategy_a(): return render_template('strategy.html',title='策略 A：威科夫×操盘手2',rows=_p1rows('A_WYCKOFF_VOLUME'))
 @app.get('/strategy/b')
