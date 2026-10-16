@@ -32,13 +32,18 @@ def test_spring_then_later_test_is_replayed():
     f=bars(); f.loc[90,["low","close","vol"]]=[95,100,500]; f.loc[95,["low","close","vol"]]=[100,100,500]
     rows=strategy_a.scan("X",f.trade_date.iloc[-1],f)
     events=strategy_a.replay_events("X",f,f.trade_date.iloc[-1])
-    assert rule(rows,"A04").evidence["events"] == [e for e in events if e["event_type"]=="SPRING"]
+    springs=[e for e in events if e["event_type"]=="SPRING"]
+    assert len(springs)==1 and springs[0]["event_date"]==f.trade_date.iloc[90].date().isoformat()
+    assert any(h["to"]=="TEST_CANDIDATE" and h["date"]==f.trade_date.iloc[95].date().isoformat() for h in springs[0]["transition_history"])
+    assert rule(rows,"A04").evidence["events"] == springs
 
 def test_sos_lps_are_not_same_day():
     f=bars(); f.loc[100,["close","high","vol"]]=[103,104,3000]; f.loc[105,["close","high","low","vol"]]=[101,102,100,500]
     rows=strategy_a.scan("X",f.trade_date.iloc[-1],f)
     events=strategy_a.replay_events("X",f,f.trade_date.iloc[-1])
-    assert rule(rows,"A06").evidence["events"] == [e for e in events if e["event_type"]=="SOS"]
+    sos=[e for e in events if e["event_type"]=="SOS"]
+    assert len(sos)>=1 and sos[0]["event_date"]==f.trade_date.iloc[100].date().isoformat()
+    assert rule(rows,"A06").evidence["events"] == sos
 
 def test_lps_without_prior_sos_is_watch():
     e=rule(strategy_a.scan("X","2025-05-21",bars()),"A06"); assert e.state=="WATCH" and not e.evidence["prior_sos"]
