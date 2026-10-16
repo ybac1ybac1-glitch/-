@@ -20,3 +20,9 @@ def test_calendar_requires_360(monkeypatch):
 def test_existing_row_not_overwritten(monkeypatch):
  import data,history_extension
  data.DB_PATH=tempfile.mktemp(suffix='.sqlite3'); c=data._db(); old={'ts_code':'X','trade_date':'20240102','open':1,'high':2,'low':.5,'close':1.5,'pre_close':1.4,'change':.1,'pct_chg':7,'vol':10,'amount':100,'turnover_rate':9}; data._upsert(c,pd.DataFrame([old])); c.commit(); history_extension._insert_missing(c,pd.DataFrame([{**old,'close':99,'turnover_rate':None},{**old,'ts_code':'Y','close':2,'turnover_rate':3}])); c.commit(); assert c.execute("select close,turnover_rate from daily where ts_code='X'").fetchone()==(1.5,9); assert c.execute("select close from daily where ts_code='Y'").fetchone()[0]==2
+def test_date_task_persistence_skips_complete(monkeypatch):
+ import data,history_extension
+ data.DB_PATH=tempfile.mktemp(suffix='.sqlite3'); c=data._db(); history_extension._ensure(c); c.execute("INSERT INTO history_date_tasks VALUES('20240102','OHLCV_COMPLETE','TURNOVER_COMPLETE','TURNOVER_COMPLETE',1,1,'','now')"); c.commit(); assert c.execute("select status from history_date_tasks where trade_date='20240102'").fetchone()[0]=='TURNOVER_COMPLETE'
+def test_failed_date_is_persisted_for_resume(monkeypatch):
+ import data,history_extension
+ data.DB_PATH=tempfile.mktemp(suffix='.sqlite3'); c=data._db(); history_extension._ensure(c); c.execute("INSERT INTO history_date_tasks VALUES('20240102','PENDING_VERIFY','PENDING_VERIFY','FAILED',0,0,'network','now')"); c.commit(); assert c.execute("select status from history_date_tasks").fetchone()[0]=='FAILED'
