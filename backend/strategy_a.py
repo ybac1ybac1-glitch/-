@@ -25,6 +25,52 @@ def detect_range(history_before_event,params=None):
  return {"valid":bool(valid),"support":lo,"resistance":hi,"width":width,"slope":slope,"stability":stability,"boundary_tests":tests,"valid_sessions":len(h),"threshold_version":THRESHOLD_VERSION}
 def _event_ranges(x):
  return [detect_range(x.iloc[:i]) for i in range(len(x))]
+def _event_id(symbol, rule, event_date):
+ return f"{STRATEGY_ID}:{symbol}:{rule}:{event_date}:{VERSION}"
+
+def replay_events(symbol, frame, asof_date=None):
+ """Replay every Spring/SOS event independently through each known session."""
+ x, miss = _prepare(asof_date or "9999-12-31", frame)
+ if x is None or x.empty: return []
+ ranges = _event_ranges(x); events = []
+ for i in range(PARAMS["spring_lookback"], len(x)):
+  r = ranges[i]; support = r.get("support")
+  if not (r.get("valid") and support): continue
+  if x.low.iloc[i] < support*(1-PARAMS["spring_break"]) and x.close.iloc[i] >= support*PARAMS["spring_reclaim"] and x.vol.iloc[i] > 0:
+   d=x.trade_date.iloc[i].date().isoformat(); baseline=float(x.vol.iloc[max(0,i-20):i].mean())
+   e={"event_id":_event_id(symbol,"A03",d),"event_date":d,"event_type":"SPRING","frozen_support":support,"frozen_resistance":r.get("resistance"),"frozen_volume_baseline":baseline,"threshold_version":THRESHOLD_VERSION,"current_state":"CANDIDATE","transition_history":[{"date":d,"from":None,"to":"CANDIDATE","reason":"break_and_reclaim"}],"invalidation_reason":""}
+   for j in range(i+1,min(len(x),i+1+PARAMS["test_days"])):
+    jd=x.trade_date.iloc[j].date().isoformat()
+    if x.close.iloc[j] < support*(1-PARAMS["lps_tolerance"]):
+     e["current_state"]="INVALIDATED"; e["invalidation_reason"]="support_broken"; e["transition_history"].append({"date":jd,"from":"WAITING_TEST","to":"INVALIDATED","reason":"support_broken"}); break
+    if e["current_state"]=="CANDIDATE":
+     e["current_state"]="WAITING_TEST"; e["transition_history"].append({"date":jd,"from":"CANDIDATE","to":"WAITING_TEST","reason":"await_test"})
+    if x.low.iloc[j] >= support*(1-PARAMS["lps_tolerance"]) and baseline>0 and x.vol.iloc[j] <= baseline*PARAMS["test_volume_ratio"]:
+     e["current_state"]="TEST_CANDIDATE"; e["transition_history"].append({"date":jd,"from":"WAITING_TEST","to":"TEST_CANDIDATE","reason":"low_volume_test"}); break
+   else:
+    if len(x)>=i+1+PARAMS["test_days"] and e["current_state"] in {"CANDIDATE","WAITING_TEST"}:
+     e["current_state"]="EXPIRED"; e["transition_history"].append({"date":x.trade_date.iloc[min(len(x)-1,i+PARAMS["test_days"])].date().isoformat(),"from":e["current_state"],"to":"EXPIRED","reason":"test_timeout"})
+   events.append(e)
+ for i in range(20,len(x)):
+  r=ranges[i]; pressure=r.get("resistance"); av=x.vol.iloc[max(0,i-20):i].mean()
+  if not (r.get("valid") and pressure and av>0): continue
+  cp=(x.close.iloc[i]-x.low.iloc[i])/max(x.high.iloc[i]-x.low.iloc[i],1e-12)
+  if x.close.iloc[i] <= pressure or x.vol.iloc[i] < av*PARAMS["sos_volume_ratio"] or cp < PARAMS["sos_close_position"]: continue
+  d=x.trade_date.iloc[i].date().isoformat()
+  e={"event_id":_event_id(symbol,"A05",d),"event_date":d,"event_type":"SOS","frozen_support":r.get("support"),"frozen_resistance":pressure,"frozen_volume_baseline":float(av),"threshold_version":THRESHOLD_VERSION,"current_state":"CANDIDATE","transition_history":[{"date":d,"from":None,"to":"CANDIDATE","reason":"pressure_break"}],"invalidation_reason":""}
+  for j in range(i+1,len(x)):
+   jd=x.trade_date.iloc[j].date().isoformat()
+   if x.close.iloc[j] < pressure*(1-PARAMS["lps_tolerance"]):
+    e["current_state"]="INVALIDATED"; e["invalidation_reason"]="breakout_support_lost"; e["transition_history"].append({"date":jd,"from":"WAITING_LPS","to":"INVALIDATED","reason":"support_broken"}); break
+   if e["current_state"]=="CANDIDATE": e["current_state"]="WAITING_LPS"; e["transition_history"].append({"date":jd,"from":"CANDIDATE","to":"WAITING_LPS","reason":"await_lps"})
+   vr=x.vol.iloc[j]/max(av,1e-12)
+   if x.low.iloc[j]<=pressure*(1+PARAMS["lps_tolerance"]) and x.close.iloc[j]>=pressure*(1-PARAMS["lps_tolerance"]) and vr<=PARAMS["lps_volume_ratio"]:
+    e["current_state"]="LPS_CANDIDATE"; e["transition_history"].append({"date":jd,"from":"WAITING_LPS","to":"LPS_CANDIDATE","reason":"low_volume_retest"}); break
+  else:
+   if len(x)>i+1 and e["current_state"]=="WAITING_LPS": e["current_state"]="EXPIRED"; e["transition_history"].append({"date":x.trade_date.iloc[-1].date().isoformat(),"from":"WAITING_LPS","to":"EXPIRED","reason":"no_lps"})
+  events.append(e)
+ return events
+
 def scan(symbol,asof_date,frame=None):
  x,miss=_prepare(asof_date,frame)
  if x is None or x.empty:return [_ev("A00",symbol,asof_date,"INSUFFICIENT_DATA","数据质量",missing=miss or ["valid_ohlcv"])]
