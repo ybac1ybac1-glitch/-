@@ -139,10 +139,10 @@ def scan(symbol,asof_date,frame=None):
             state="CANDIDATE" if current else "WATCH"; ev={"event_id":chosen["event_id"] if chosen else "","event_date":chosen["event_date"] if chosen else "","events":es,"frozen_resistance":chosen.get("frozen_resistance") if chosen else None}
         elif rule=="A04":
             state="CANDIDATE" if any(h.get("to")=="TEST_CANDIDATE" for _,h in transitions) else ("INVALIDATED" if any(h.get("to")=="INVALIDATED" for _,h in transitions) else "WATCH")
-            e,h=transitions[-1] if transitions else (chosen,None); ev={"event_id":e["event_id"] if e else "","event_date":e["event_date"] if e else "","transition":h,"events":es,"frozen_support":e.get("frozen_support") if e else None}
+            e,h=transitions[-1] if transitions else (chosen,None); ev={"event_id":e["event_id"] if e else "","event_date":e["event_date"] if e else "","spring_date":e["event_date"] if e else "","transition":h,"events":es,"frozen_support":e.get("frozen_support") if e else None}
         else:
             state="CANDIDATE" if any(h.get("to")=="LPS_CANDIDATE" for _,h in transitions) else ("INVALIDATED" if any(h.get("to")=="INVALIDATED" for _,h in transitions) else "WATCH")
-            e,h=transitions[-1] if transitions else (chosen,None); ev={"event_id":e["event_id"] if e else "","event_date":e["event_date"] if e else "","transition":h,"events":es,"frozen_resistance":e.get("frozen_resistance") if e else None,"lps_wait_days":PARAMS["lps_wait_days"]}
+            e,h=transitions[-1] if transitions else (chosen,None); ev={"event_id":e["event_id"] if e else "","event_date":e["event_date"] if e else "","sos_date":e["event_date"] if e else "","prior_sos":bool(e),"transition":h,"events":es,"frozen_resistance":e.get("frozen_resistance") if e else None,"lps_wait_days":PARAMS["lps_wait_days"]}
         return _ev(rule,symbol,date,state,section,ev,missing=("stk_limit,halt_status,adj_factor",) if es else ())
     out += [event_ev("A03","SPRING","Spring候选"),event_ev("A04","SPRING","Spring后测试"),event_ev("A05","SOS","SOS强势突破"),event_ev("A06","SOS","LPS回踩")]
     bar=x.iloc[-1]; avg=x.vol.shift(1).rolling(20,min_periods=10).mean(); av=float(avg.iloc[-1]) if pd.notna(avg.iloc[-1]) else 0; effort=float(bar.vol/max(av,1e-12)); result=float((bar.close-bar.open)/max(bar.open,1e-12))
