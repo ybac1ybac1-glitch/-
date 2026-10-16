@@ -72,50 +72,6 @@ def replay_events(symbol, frame, asof_date=None):
  return events
 
 def scan(symbol,asof_date,frame=None):
- x,miss=_prepare(asof_date,frame)
- if x is None or x.empty:return [_ev("A00",symbol,asof_date,"INSUFFICIENT_DATA","数据质量",missing=miss or ["valid_ohlcv"])]
- date=x.trade_date.iloc[-1].date().isoformat()
- if len(x)<20:return [_ev("A00",symbol,date,"INSUFFICIENT_DATA","数据质量",missing=("at_least_20_valid_sessions",))]
- out=[]; prior=x.iloc[:-1]; rng=detect_range(prior); valid=rng.get("valid",False)
- if not rng.get("valid_sessions",0)>=PARAMS["range_min_days"]:return [_ev("A01",symbol,date,"INSUFFICIENT_DATA","交易区间识别",missing=("range_history_80",))]
- out.append(_ev("A01",symbol,date,"CANDIDATE" if valid else "WATCH","交易区间识别",rng,risk="medium" if valid else "unknown",invalidation=f"close < {rng.get('support','?')}"))
- w=prior.tail(PARAMS["range_window"]); recent,base=w.tail(10),w.head(max(10,len(w)-10));rv,bv=recent.vol.mean(),base.vol.mean();rr=(recent.high-recent.low).mean()/max(recent.close.mean(),1e-12);br=(base.high-base.low).mean()/max(base.close.mean(),1e-12);pull=float(recent.close.iloc[-1]/recent.close.iloc[0]-1);supply=rv<=bv*PARAMS["volume_contraction"] and (rr<=br or pull<0) and recent.amount.mean()>0
- out.append(_ev("A02",symbol,date,"CANDIDATE" if supply else "WATCH","供应减弱",{"recent_volume":rv,"base_volume":bv,"range_ratio_recent":rr,"range_ratio_base":br,"pullback":pull,"liquid":bool(recent.amount.mean()>0)}))
- ranges=_event_ranges(x); springs=[]
- for i in range(PARAMS["spring_lookback"],len(x)):
-  r=ranges[i]; support=r.get("support")
-  if r.get("valid") and support and x.low.iloc[i]<support*(1-PARAMS["spring_break"]) and x.close.iloc[i]>=support*PARAMS["spring_reclaim"] and x.vol.iloc[i]>0:springs.append(i)
- spring_i=springs[-1] if springs else None; sr=ranges[spring_i] if spring_i is not None else {}
- out.append(_ev("A03",symbol,date,"CANDIDATE" if spring_i==len(x)-1 else "WATCH","Spring候选",{"spring_dates":[x.trade_date.iloc[i].date().isoformat() for i in springs],"support":sr.get("support"),"frozen_range":sr,"reclaimed":spring_i==len(x)-1},missing=("stk_limit,halt_status,adj_factor",) if spring_i is not None else ()))
- test_i=None; test_status="WAITING"
- if spring_i is not None:
-  support=sr["support"];basevol=float(x.vol.iloc[max(0,spring_i-20):spring_i].mean())
-  for i in range(spring_i+1,min(len(x),spring_i+1+PARAMS["test_days"])):
-   if x.close.iloc[i]<support*(1-PARAMS["lps_tolerance"]):test_status="INVALIDATED";break
-   if x.low.iloc[i]>=support*(1-PARAMS["lps_tolerance"]) and basevol>0 and x.vol.iloc[i]<=basevol*PARAMS["test_volume_ratio"]:test_i=i;test_status="TEST_CANDIDATE";break
-  if test_i is None and test_status=="WAITING" and len(x)>=spring_i+1+PARAMS["test_days"]:test_status="EXPIRED"
- out.append(_ev("A04",symbol,date,"CANDIDATE" if test_i==len(x)-1 else ("INVALIDATED" if test_status=="INVALIDATED" else "WATCH"),"Spring后测试",{"spring_date":x.trade_date.iloc[spring_i].date().isoformat() if spring_i is not None else "","test_date":x.trade_date.iloc[test_i].date().isoformat() if test_i is not None else "","status":test_status,"support":sr.get("support"),"frozen_volume":float(x.vol.iloc[max(0,spring_i-20):spring_i].mean()) if spring_i is not None else None}))
- sos=[]; avg=x.vol.shift(1).rolling(20,min_periods=10).mean()
- for i in range(20,len(x)):
-  r=ranges[i];pressure=r.get("resistance");av=avg.iloc[i]
-  if r.get("valid") and pressure and pd.notna(av) and x.close.iloc[i]>pressure and x.vol.iloc[i]>=av*PARAMS["sos_volume_ratio"] and (x.close.iloc[i]-x.low.iloc[i])/max(x.high.iloc[i]-x.low.iloc[i],1e-12)>=PARAMS["sos_close_position"]:sos.append(i)
- si=sos[-1] if sos else None; srng=ranges[si] if si is not None else {}; out.append(_ev("A05",symbol,date,"CANDIDATE" if si==len(x)-1 else "WATCH","SOS强势突破",{"sos_date":x.trade_date.iloc[si].date().isoformat() if si is not None else "","frozen_pressure":srng.get("resistance"),"frozen_range":srng,"valid_range":bool(si is not None)},missing=("stk_limit,halt_status",) if si is not None else ()))
- li=None; lstatus="NO_SOS"
- if si is not None:
-  pressure=srng["resistance"];basev=float(x.vol.iloc[max(0,si-20):si].mean())
-  for i in range(si+1,len(x)):
-   vr=x.vol.iloc[i]/max(basev,1e-12)
-   if x.close.iloc[i]<pressure*(1-PARAMS["lps_tolerance"]):lstatus="INVALIDATED";break
-   if x.low.iloc[i]<=pressure*(1+PARAMS["lps_tolerance"]) and x.close.iloc[i]>=pressure*(1-PARAMS["lps_tolerance"]) and vr<=PARAMS["lps_volume_ratio"]:li=i;lstatus="LPS_CANDIDATE";break
- out.append(_ev("A06",symbol,date,"CANDIDATE" if li==len(x)-1 else ("INVALIDATED" if lstatus=="INVALIDATED" else "WATCH"),"LPS回踩",{"sos_date":x.trade_date.iloc[si].date().isoformat() if si is not None else "","lps_date":x.trade_date.iloc[li].date().isoformat() if li is not None else "","status":lstatus,"frozen_pressure":srng.get("resistance") if si is not None else None,"prior_sos":si is not None}))
- bar=x.iloc[-1];av=float(avg.iloc[-1]) if pd.notna(avg.iloc[-1]) else 0;eff=float(bar.vol/max(av,1e-12));res=float((bar.close-bar.open)/max(bar.open,1e-12));out.append(_ev("A07",symbol,date,"WATCH","努力与结果",{"volume_effort":eff,"price_result":res}));out.append(_ev("A08",symbol,date,"WATCH","量价背离",{"price_up":bool(x.close.tail(5).iloc[-1]>x.close.tail(5).iloc[0]),"volume_down":bool(x.vol.tail(5).iloc[-1]<x.vol.tail(5).iloc[0])}))
- flags=[]; 
- if rng.get("slope",0)>.003:flags.append("rising_trend")
- if eff>2.5 and res<0:flags.append("high_volume_down_close")
- if rng.get("width",0)>.50:flags.append("wide_range")
- out.append(_ev("A09",symbol,date,"CANDIDATE" if len(flags)>=2 else "WATCH","派发风险",{"risk_conditions":flags,"independent_conditions":len(flags)},risk="high" if len(flags)>=2 else "low"));return out
-
-def scan(symbol,asof_date,frame=None):
     """Generate Evidence from the single replay_events source of truth."""
     x,miss=_prepare(asof_date,frame)
     if x is None or x.empty:return [_ev("A00",symbol,asof_date,"INSUFFICIENT_DATA","数据质量",missing=miss or ["valid_ohlcv"])]
