@@ -80,7 +80,7 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
      if len(out["errors"])<20:out["errors"].append(f"{code}: {e}")
     if progress:progress(out)
     if console_progress and (out["processed"]%100==0 or out["processed"]==out["total"]):
-     elapsed=time.monotonic()-started; avg=elapsed/max(1,out["processed"]); remain=max(0,out["total"]-out["processed"])*avg; print(f"processed={out["processed"]}/{out["total"]} elapsed={elapsed:.1f}s avg={avg:.3f}s remaining={remain:.1f}s",flush=True)
+     elapsed=time.monotonic()-started; avg=elapsed/max(1,out['processed']); remain=max(0,out['total']-out['processed'])*avg; print(f"processed={out['processed']}/{out['total']} elapsed={elapsed:.1f}s avg={avg:.3f}s remaining={remain:.1f}s",flush=True)
   stored.sort(key=lambda x:x["ts_code"]); out["truncated"]=len(stored)>=MAX_STORED and out["total_matches"]>len(stored); out["results"]=stored; out["returned_matches"]=len(stored); out["rule_hits"]=dict(out["rule_hits"])
   with _snapshot_lock:
    global _snapshot; _snapshot=dict(out)
