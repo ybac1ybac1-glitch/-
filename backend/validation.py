@@ -80,4 +80,5 @@ def start(path,asof_date=None,batch_size=100,max_results=200):
   except Exception as e:_state.update(status="FAILED",error=str(e))
   finally:_task_lock.release()
  threading.Thread(target=run,daemon=True).start();return {"status":"RUNNING"},202
-def status():return dict(_state)
+def status():
+ d=dict(_state); d.pop("result",None); return d
