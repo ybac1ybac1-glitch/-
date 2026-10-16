@@ -28,7 +28,7 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
  try:c=_connect(path)
  except Exception as e:out["errors"]=[str(e)];return out
  try:
-  tables={r[0] for r in c.execute("select name from sqlite_master where type='table')")}
+  tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
   if "daily" not in tables:out["errors"]=["daily表不存在"];return out
   cols={r[1] for r in c.execute("pragma table_info(daily)")}
   miss=sorted(set(REQUIRED)-cols)
