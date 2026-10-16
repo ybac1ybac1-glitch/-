@@ -32,3 +32,18 @@ def test_result_size_is_bounded(tmp_path):
  r=validate_cache(p,"20250101",batch_size=1)
  assert all("states" not in x for x in r["results"])
  assert len(r["errors"])<=20
+
+def test_bounded_matches_and_invalid_batch(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ r=validate_cache(p,"20250101",batch_size=1,max_results=1)
+ assert r["total_matches"]>=r["returned_matches"] and "truncated" in r
+ assert validate_cache(p,"20250101",batch_size=0)["errors"]
+def test_readonly_connection_rejects_write(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ import validation
+ c=validation._connect(p)
+ try:
+  try: c.execute("delete from daily")
+  except Exception: pass
+  else: raise AssertionError("readonly connection allowed write")
+ finally: c.close()
