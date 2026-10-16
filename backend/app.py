@@ -38,7 +38,8 @@ def strategy_a_validate_start():
  try: batch=int(q.get('batch_size',100)); max_results=int(q.get('max_results',200))
  except Exception: return jsonify({'error':'batch_size/max_results必须为整数'}),400
  if not 1<=batch<=1000 or not 1<=max_results<=10000:return jsonify({'error':'batch_size必须1-1000，max_results必须1-10000'}),400
- return jsonify(start(data.DB_PATH,q.get('asof_date'),batch,max_results)),202
+ result, code = start(data.DB_PATH,q.get('asof_date'),batch,max_results)
+ return jsonify(result),code
 @app.get('/strategy/a/validate/results')
 def strategy_a_validate_results(): return jsonify(validation_status().get('result') or {'status':validation_status()['status']})
 @app.get('/strategy/a')
