@@ -1,6 +1,6 @@
 """Read-only, bounded P2.3 cache validation."""
 from __future__ import annotations
-import sqlite3,re,threading
+import sqlite3,re,threading,time
 from collections import Counter
 from urllib.parse import quote
 import pandas as pd
@@ -38,7 +38,7 @@ def _compact(rows):
   d=e.to_dict();v=d.get("evidence",{})
   out.append({"rule_id":d["rule_id"],"state":d["state"],"signal_date":d["signal_date"],"event_id":v.get("event_id",""),"event_date":v.get("event_date",""),"frozen_support":v.get("frozen_support"),"frozen_resistance":v.get("frozen_resistance"),"risk_level":d.get("risk_level",""),"missing_fields":d.get("missing_fields",[])})
  return out
-def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,progress=None):
+def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,progress=None,console_progress=False,max_stocks=None):
  if not 1<=int(batch_size)<=1000:return {"errors":["batch_size必须在1到1000之间"]}
  if not 1<=int(max_results)<=10000:return {"errors":["max_results必须在1到10000之间"]}
  out={"asof_date":None,"processed":0,"scanned":0,"total":0,"insufficient":0,"failed":0,"abnormal":0,"no_bar_on_asof":0,"rule_hits":Counter(),"results":[],"errors":[],"read_only":True,"truncated":False,"total_matches":0,"total_signals":0,"returned_matches":0}
@@ -55,7 +55,9 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
   try: cutoff,asof=_resolve_asof(c,tables,raw,asof_date)
   except ValueError as e:return {"errors":[str(e)]}
   out["asof_date"]=asof
-  codes=[r[0] for r in c.execute("select distinct ts_code from daily order by ts_code")];out["total"]=len(codes)
+  codes=[r[0] for r in c.execute("select distinct ts_code from daily order by ts_code")];
+  if max_stocks is not None: codes=codes[:int(max_stocks)]
+  out["total"]=len(codes); started=time.monotonic()
   stored=[];out["truncated"]=False
   for start_i in range(0,len(codes),int(batch_size)):
    for code in codes[start_i:start_i+int(batch_size)]:
@@ -77,6 +79,8 @@ def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,pro
      out["failed"]+=1
      if len(out["errors"])<20:out["errors"].append(f"{code}: {e}")
     if progress:progress(out)
+    if console_progress and (out["processed"]%100==0 or out["processed"]==out["total"]):
+     elapsed=time.monotonic()-started; avg=elapsed/max(1,out['processed']); remain=max(0,out['total']-out['processed'])*avg; print(f"processed={out['processed']}/{out['total']} elapsed={elapsed:.1f}s avg={avg:.3f}s remaining={remain:.1f}s",flush=True)
   stored.sort(key=lambda x:x["ts_code"]); out["truncated"]=len(stored)>=MAX_STORED and out["total_matches"]>len(stored); out["results"]=stored; out["returned_matches"]=len(stored); out["rule_hits"]=dict(out["rule_hits"])
   with _snapshot_lock:
    global _snapshot; _snapshot=dict(out)
