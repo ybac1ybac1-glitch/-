@@ -6,7 +6,7 @@ except Exception: ts=None
 from config import TOKEN
 BASE=os.path.dirname(__file__); DB_PATH=os.path.join(BASE,'market_cache.sqlite3')
 MAX_REQUESTS_PER_MINUTE=int(os.getenv('TUSHARE_MAX_REQUESTS_PER_MINUTE','60'))
-_lock=threading.Lock(); _update_lock=threading.Lock(); _thread=None; _last_request=0.0
+_lock=threading.Lock(); _update_lock=threading.Lock(); _turnover_lock=threading.Lock(); _thread=None; _turnover_thread=None; _last_request=0.0
 _status={'running':False,'requested':0,'success':0,'failed':0,'completed':0,'total':0,'last_error':'','last_update':''}
 pro=None
 if ts and TOKEN:
@@ -81,3 +81,23 @@ def start_update(max_days=120):
  global _thread
  if _status['running'] or (_thread and _thread.is_alive()): return status()
  _thread=threading.Thread(target=_run_update,args=(max_days,),daemon=True); _thread.start(); return status()
+
+
+def _run_turnover_backfill():
+ _status.update(turnover_running=True,turnover_completed=0,turnover_total=0,turnover_error='')
+ try:
+  c=_db(); dates=[r[0] for r in c.execute("SELECT DISTINCT trade_date FROM daily WHERE turnover_rate IS NULL ORDER BY trade_date").fetchall()]; _status['turnover_total']=len(dates)
+  for i,day in enumerate(dates,1):
+   try:
+    basic=_call('daily_basic',trade_date=day,fields='ts_code,trade_date,turnover_rate')
+    if basic is not None and not basic.empty and 'turnover_rate' in basic:
+     for _,r in basic.dropna(subset=['ts_code','trade_date','turnover_rate']).iterrows(): c.execute('UPDATE daily SET turnover_rate=? WHERE ts_code=? AND trade_date=?',(float(r.turnover_rate),str(r.ts_code),str(r.trade_date)))
+     c.commit()
+    _status['turnover_completed']=i
+   except Exception as e: _status['turnover_error']=str(e); break
+ finally: _status['turnover_running']=False
+
+def start_turnover_backfill():
+ global _turnover_thread
+ if _status.get('running') or _status.get('turnover_running') or (_turnover_thread and _turnover_thread.is_alive()): return status()
+ _turnover_thread=threading.Thread(target=_run_turnover_backfill,daemon=True); _turnover_thread.start(); return status()
