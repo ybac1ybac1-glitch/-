@@ -23,8 +23,17 @@ def detect_range(history_before_event,params=None):
  stability=float(((h.close>=lo)&(h.close<=hi)).mean()); tests=int((h.low<=lo*(1+p["range_test_tolerance"])).sum()+(h.high>=hi*(1-p["range_test_tolerance"])).sum())
  valid=width<=p["range_width_max"] and stability>=.70 and tests>=p["range_min_tests"] and slope>p["max_down_slope"]
  return {"valid":bool(valid),"support":lo,"resistance":hi,"width":width,"slope":slope,"stability":stability,"boundary_tests":tests,"valid_sessions":len(h),"threshold_version":THRESHOLD_VERSION}
+def _detect_range_arrays(close,high,low,end,params=None):
+ p={**PARAMS,**(params or {})}; n=end
+ if n<p["range_min_days"]: return {"valid":False,"reason":"insufficient_history","valid_sessions":n}
+ start=max(0,n-p["range_window"]); lo_a=low[start:n]; hi_a=high[start:n]; cl=close[start:n]
+ q=p["range_quantiles"]; lo,hi=float(np.quantile(lo_a,q[0])),float(np.quantile(hi_a,q[1]))
+ width=(hi-lo)/max(float(np.median(cl)),1e-12); slope=float(np.polyfit(np.arange(len(cl)),cl,1)[0]/max(cl.mean(),1e-12))
+ stability=float(((cl>=lo)&(cl<=hi)).mean()); tests=int((lo_a<=lo*(1+p["range_test_tolerance"])).sum()+(hi_a>=hi*(1-p["range_test_tolerance"])).sum())
+ return {"valid":bool(width<=p["range_width_max"] and stability>=.70 and tests>=p["range_min_tests"] and slope>p["max_down_slope"]),"support":lo,"resistance":hi,"width":width,"slope":slope,"stability":stability,"boundary_tests":tests,"valid_sessions":len(cl),"threshold_version":THRESHOLD_VERSION}
 def _event_ranges(x):
- return [detect_range(x.iloc[:i]) for i in range(len(x))]
+ close=x.close.to_numpy(dtype=float); high=x.high.to_numpy(dtype=float); low=x.low.to_numpy(dtype=float)
+ return [_detect_range_arrays(close,high,low,i) for i in range(len(x))]
 def _event_id(symbol, rule, event_date):
  return f"{STRATEGY_ID}:{symbol}:{rule}:{event_date}:{VERSION}"
 
