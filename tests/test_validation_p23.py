@@ -18,3 +18,17 @@ def test_missing_schema_is_explicit(tmp_path):
  r=validate_cache(p); assert r["errors"] and r["scanned"]==0
 def test_empty_path_is_safe(tmp_path):
  r=validate_cache(str(tmp_path/"none.sqlite3")); assert r["failed"]==0 and r["errors"]
+
+def test_date_normalization_and_no_bar_status(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ r=validate_cache(p,"20250101"); assert r["asof_date"]=="20250101"
+ r2=validate_cache(p,"20250102"); assert r2["errors"] or r2["no_bar_on_asof"]==1
+def test_invalid_or_future_date_is_rejected(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ assert validate_cache(p,"2025-01-01")["errors"]
+ assert validate_cache(p,"29990101")["errors"]
+def test_result_size_is_bounded(tmp_path):
+ p=str(tmp_path/"m.sqlite3"); make_db(p)
+ r=validate_cache(p,"20250101",batch_size=1)
+ assert all("states" not in x for x in r["results"])
+ assert len(r["errors"])<=20
