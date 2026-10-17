@@ -57,3 +57,13 @@ def test_audit_frame_detects_frozen_change(monkeypatch):
     monkeypatch.setattr(h,"replay_events",events)
     r=h.audit_frame("600001.SH",x)
     assert r["status"]=="FAIL" and r["frozen_evidence_anomalies"]>0
+
+def test_audit_frame_detects_illegal_state_transition(monkeypatch):
+    import history_replay_audit as h
+    from types import SimpleNamespace
+    x=frame(4)
+    monkeypatch.setattr(h,"scan",lambda symbol,asof,df:[SimpleNamespace(rule_id="A01",state="WATCH",signal_date=asof,evidence={})])
+    bad={"event_id":"bad","event_date":"2025-01-01","event_type":"SPRING","frozen_support":10,"frozen_resistance":12,"frozen_volume_baseline":100,"current_state":"TEST_CANDIDATE","transition_history":[{"date":"2025-01-01","from":None,"to":"CANDIDATE"},{"date":"2025-01-02","from":"CANDIDATE","to":"TEST_CANDIDATE"},{"date":"2025-01-03","from":"TEST_CANDIDATE","to":"WAITING_TEST"}]}
+    monkeypatch.setattr(h,"replay_events",lambda *a,**k:[bad])
+    r=h.audit_frame("600001.SH",x)
+    assert r["status"]=="FAIL" and r["state_transition_anomalies"]>0
