@@ -16,7 +16,7 @@ def _safe_json(value):
 
 def audit(results_path, market_path=None):
     report={"status":"NO_SNAPSHOT","read_only":True,"rules":{r:{"total":0,"states":Counter()} for r in RULES},
-            "state_totals":Counter(),"status_summary":{"candidate":0,"confirmed":0,"invalidated":0},"evidence":{"complete":0,"incomplete":0,"missing_reasons":Counter()},
+            "state_totals":Counter(),"status_summary":{"candidate":0,"confirmed":0,"invalidated":0},"state_summary":{"candidate":0,"confirmed":0,"invalidated":0},"evidence":{"complete":0,"incomplete":0,"missing_reasons":Counter()},
             "duplicates":{"exact_signal_rows":0,"event_rule_dates":[],"cross_rule_events":[]},
             "untraceable":[],"suspicious":[],"examples":[],"data_checks":{"market_rows_checked":0,"abnormal_rows":0}}
     rc=None; mc=None
@@ -66,6 +66,7 @@ def audit(results_path, market_path=None):
         report["duplicates"]["event_rule_dates"]=[{"key":list(k),"count":n} for k,n in event_keys.items() if n>1]
         report["duplicates"]["cross_rule_events"]=[{"key":list(k),"rules":sorted(v)} for k,v in event_rules.items() if len(v)>1]
         report["status_summary"]={"candidate":report["state_totals"].get("CANDIDATE",0),"confirmed":report["state_totals"].get("CONFIRMED",0),"invalidated":report["state_totals"].get("INVALIDATED",0)}
+        report["state_summary"]=dict(report["status_summary"])
         report["audit_conclusions"]={"verified":["统计来自当前有效持久化快照","数据库连接使用只读模式"],"findings":[],"insufficient":["未提供用户本机真实数据库时不能复现92只股票/127条信号","仅凭持久化结果不能证明完整历史重放无未来函数"]}
         if partial: report["audit_conclusions"]["findings"].append("快照标记为部分样本，不能外推全市场")
         if report["untraceable"]: report["audit_conclusions"]["findings"].append("存在不可追溯或证据不完整信号")
