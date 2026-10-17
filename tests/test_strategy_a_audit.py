@@ -11,7 +11,7 @@ def make_result(path,rows,partial=0):
 
 def test_audit_counts_states_and_evidence(tmp_path):
     p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1",'{"frozen_support":10}'),("600001.SH","A03","CANDIDATE","20250103","e1",'{"frozen_support":10}'),("600002.SH","A05","CONFIRMED","20250103","e2",'{"frozen_resistance":12}')])
-    r=audit(str(p)); assert r["actual_signal_rows"]==3 and r["state_summary"]=={"candidate":2,"confirmed":1,"invalidated":0}; assert len(r["duplicates"]["exact_records"])==1
+    r=audit(str(p)); assert r["actual_signal_rows"]==3 and r["state_summary"]=={"candidate":2,"confirmed":1,"invalidated":0,"watch":0}; assert len(r["duplicates"]["exact_records"])==1
 
 def test_audit_flags_missing_and_invalid_evidence(tmp_path):
     p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A04","CANDIDATE","20250103","","{\"frozen_support\":0}")])
@@ -37,4 +37,5 @@ def test_rule_optional_fields_and_legal_cross_rule_reference(tmp_path):
 def test_audit_invalid_ohlc_and_count_mismatch(tmp_path):
     p=tmp_path/"r.sqlite3"; m=tmp_path/"m.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1","{\"event_id\":\"e1\",\"event_date\":\"20250103\",\"frozen_support\":9}")])
     c=sqlite3.connect(m); c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)"); c.execute("insert into daily values('600001.SH','20250103',10,8,9,10,100,100)"); c.commit();c.close()
+    c=sqlite3.connect(p); c.execute("update scans set signal_count=2"); c.commit(); c.close()
     r=audit(str(p),str(m)); assert r["mismatches"] and r["data_checks"]["abnormal"]==1 and r["suspicious"]
