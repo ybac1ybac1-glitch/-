@@ -1,61 +1,75 @@
-"""P3.6 read-only daily replay and future-function audit for Strategy A."""
+"""P3.6 daily replay, evidence and state-machine audit."""
 from __future__ import annotations
 import argparse,json,math
-from collections import Counter
 import pandas as pd
 from strategy_a import scan,replay_events
 
-def _dates(frame):
-    return sorted(pd.to_datetime(frame["trade_date"]).dt.normalize().unique())
+TERMINALS={"TEST_CANDIDATE","LPS_CANDIDATE","INVALIDATED","EXPIRED"}
+ALLOWED={"SPRING":{(None,"CANDIDATE"),("CANDIDATE","WAITING_TEST"),("WAITING_TEST","TEST_CANDIDATE"),("WAITING_TEST","INVALIDATED"),("WAITING_TEST","EXPIRED")},"SOS":{(None,"CANDIDATE"),("CANDIDATE","WAITING_LPS"),("WAITING_LPS","LPS_CANDIDATE"),("WAITING_LPS","INVALIDATED"),("WAITING_LPS","EXPIRED")}}
 
-def _identity(e):
-    ev=e.evidence or {}
-    return (e.rule_id,e.state,e.signal_date,ev.get("event_id",""),ev.get("event_date",""),ev.get("frozen_support"),ev.get("frozen_resistance"))
+def _norm(v):
+    if isinstance(v,dict): return {str(k):_norm(x) for k,x in sorted(v.items()) if k not in {"parameters"}}
+    if isinstance(v,(list,tuple)): return [_norm(x) for x in v]
+    if isinstance(v,(pd.Timestamp,)): return v.isoformat()
+    if hasattr(v,"item"):
+        try:return _norm(v.item())
+        except Exception:pass
+    if isinstance(v,float):
+        return None if math.isnan(v) else round(v,10)
+    if pd.isna(v): return None
+    return v
+
+def _evidence(e):
+    return _norm(getattr(e,"evidence",{}) or {})
+
+def _record(e):
+    return {"rule_id":e.rule_id,"state":e.state,"signal_date":str(e.signal_date),"event_id":_evidence(e).get("event_id",""),"event_date":_evidence(e).get("event_date",""),"evidence":_evidence(e)}
+
+def _diff(a,b):
+    keys=sorted(set(a)|set(b)); return {k:(a.get(k),b.get(k)) for k in keys if _norm(a.get(k))!=_norm(b.get(k))}
 
 def _state_checks(events):
     issues=[]
-    terminal={"INVALIDATED","EXPIRED","TEST_CANDIDATE","LPS_CANDIDATE"}
     for e in events:
-        hist=e.get("transition_history",[])
-        prev=None
+        typ=e.get("event_type"); hist=e.get("transition_history",[]); prev=None; dates=[]
         for h in hist:
+            pair=(h.get("from"),h.get("to")); dates.append(str(h.get("date","")))
+            if pair not in ALLOWED.get(typ,set()): issues.append({"type":"illegal_transition","event_id":e.get("event_id"),"transition":h})
             if h.get("from")!=prev: issues.append({"type":"transition_from_mismatch","event_id":e.get("event_id"),"transition":h})
+            if dates[-1]<str(e.get("event_date","")): issues.append({"type":"transition_before_event","event_id":e.get("event_id"),"transition":h})
+            if len(dates)>1 and dates[-1]<=dates[-2]: issues.append({"type":"non_increasing_trading_dates","event_id":e.get("event_id"),"transition":h})
+            if prev in TERMINALS: issues.append({"type":"terminal_event_extended","event_id":e.get("event_id"),"transition":h})
             prev=h.get("to")
-        if e.get("current_state") in terminal and len(hist)>0 and any(h.get("date","")>hist[-1].get("date","") for h in hist[hist.index(hist[-1])+1:]): issues.append({"type":"terminal_event_extended","event_id":e.get("event_id")})
-        for h in hist:
-            if h.get("date","")<e.get("event_date",""): issues.append({"type":"transition_before_event","event_id":e.get("event_id"),"transition":h})
     return issues
 
 def audit_frame(symbol,frame,dates=None):
-    x=frame.copy(); x["trade_date"]=pd.to_datetime(x["trade_date"]); x=x.sort_values("trade_date").drop_duplicates("trade_date")
-    days=list(_dates(x)); targets=days if dates is None else [pd.to_datetime(d).normalize() for d in dates]
-    report={"status":"PASS","symbol_count":1,"trading_days_checked":0,"signals_checked":0,"future_leakage_count":0,"state_transition_anomalies":0,"frozen_evidence_anomalies":0,"repeatability_anomalies":0,"cases":[],"coverage":{f"A{i:02d}":{"days":0,"signals":0} for i in range(1,10)},"unverified":[]}
+    x=frame.copy();x["trade_date"]=pd.to_datetime(x["trade_date"]);x=x.sort_values("trade_date").drop_duplicates("trade_date")
+    days=sorted(x.trade_date.dt.normalize().unique());targets=days if dates is None else [pd.to_datetime(d).normalize() for d in dates]
+    r={"status":"PASS","symbol_count":1,"trading_days_checked":0,"signals_checked":0,"future_leakage_count":0,"state_transition_anomalies":0,"frozen_evidence_anomalies":0,"repeatability_anomalies":0,"evidence_differences":0,"cases":[],"coverage":{f"A{i:02d}":{"status":"UNVERIFIED","days":0,"signals":0} for i in range(1,10)},"unverified":["没有逐日历史结果快照，无法证明持久化结果与重放逐项相等","停牌、涨跌停、复权和分钟数据不在日线输入中"]}
     for d in targets:
-        prefix=x[x.trade_date<=d]; full=x
+        prefix=x[x.trade_date<=d]
         if prefix.empty:continue
-        asof=d.strftime("%Y%m%d"); a=scan(symbol,asof,prefix); b=scan(symbol,asof,full)
-        report["trading_days_checked"]+=1
-        ia=[_identity(e) for e in a]; ib=[_identity(e) for e in b]; report["signals_checked"]+=len(ia)
-        for e in a:
-            report["coverage"].setdefault(e.rule_id,{"days":0,"signals":0});report["coverage"][e.rule_id]["days"]+=1;report["coverage"][e.rule_id]["signals"]+=1
-        if ia!=ib:
-            report["future_leakage_count"]+=1;report["cases"].append({"type":"future_truncation_difference","date":asof,"truncated":ia,"full_asof":ib})
-        r1=scan(symbol,asof,prefix);r2=scan(symbol,asof,prefix)
-        if [_identity(e) for e in r1]!=[_identity(e) for e in r2]:
-            report["repeatability_anomalies"]+=1;report["cases"].append({"type":"non_repeatable_scan","date":asof})
-        events=replay_events(symbol,prefix,asof); report["state_transition_anomalies"]+=len(_state_checks(events))
+        asof=d.strftime("%Y%m%d");a=scan(symbol,asof,prefix);b=scan(symbol,asof,x);r["trading_days_checked"]+=1
+        ra=[_record(e) for e in a];rb=[_record(e) for e in b];r["signals_checked"]+=len(ra)
+        for e in ra:
+            q=r["coverage"].setdefault(e["rule_id"],{"status":"UNVERIFIED","days":0,"signals":0});q["days"]+=1;q["signals"]+=1;q["status"]="PASS"
+        if ra!=rb:
+            r["future_leakage_count"]+=1;r["evidence_differences"]+=1;r["cases"].append({"type":"future_truncation_difference","symbol":symbol,"date":asof,"changes":_diff({"records":ra},{"records":rb})})
+        if [_record(e) for e in scan(symbol,asof,prefix)]!=ra:
+            r["repeatability_anomalies"]+=1;r["cases"].append({"type":"non_repeatable_scan","symbol":symbol,"date":asof})
+        events=replay_events(symbol,prefix,asof);issues=_state_checks(events);r["state_transition_anomalies"]+=len(issues);r["cases"].extend([{"symbol":symbol,"date":asof,**i} for i in issues])
+        ids={}
         for e in events:
-            if any(str(h.get("date",""))>asof for h in e.get("transition_history",[])) or str(e.get("event_date",""))>asof:
-                report["future_leakage_count"]+=1;report["cases"].append({"type":"future_event_transition","date":asof,"event_id":e.get("event_id")})
-            if e.get("event_id") and (e.get("event_date") not in e.get("event_id","")):
-                report["frozen_evidence_anomalies"]+=1;report["cases"].append({"type":"event_id_date_mismatch","date":asof,"event_id":e.get("event_id")})
-    if report["future_leakage_count"] or report["state_transition_anomalies"] or report["frozen_evidence_anomalies"] or report["repeatability_anomalies"]:report["status"]="FAIL"
-    report["unverified"]=["历史结果库未提供每个交易日的原始快照，无法逐项证明线上历史结果等于重放结果","停牌、涨跌停、复权等缺失数据无法由日线重放验证"]
-    return report
+            if str(e.get("event_date",""))>asof or any(str(h.get("date",""))>asof for h in e.get("transition_history",[])):
+                r["future_leakage_count"]+=1;r["cases"].append({"type":"future_event_transition","symbol":symbol,"date":asof,"event_id":e.get("event_id")})
+            key=e.get("event_id")
+            frozen=(e.get("event_date"),e.get("frozen_support"),e.get("frozen_resistance"),e.get("frozen_volume_baseline"))
+            if key and key in ids and ids[key]!=frozen:r["frozen_evidence_anomalies"]+=1;r["cases"].append({"type":"frozen_evidence_changed","event_id":key,"before":ids[key],"after":frozen})
+            if key:ids[key]=frozen
+    if any(r[k] for k in ("future_leakage_count","state_transition_anomalies","frozen_evidence_anomalies","repeatability_anomalies")):r["status"]="FAIL"
+    return r
 
-def audit(symbol,frame,dates=None):
-    return audit_frame(symbol,frame,dates)
-
+def audit(symbol,frame,dates=None): return audit_frame(symbol,frame,dates)
 def main():
     p=argparse.ArgumentParser();p.add_argument("--csv",required=True);p.add_argument("--symbol",required=True);p.add_argument("--json");a=p.parse_args();r=audit(a.symbol,pd.read_csv(a.csv));print(json.dumps(r,ensure_ascii=False,indent=2));json.dump(r,open(a.json,"w",encoding="utf-8"),ensure_ascii=False,indent=2) if a.json else None
 if __name__=="__main__":main()
