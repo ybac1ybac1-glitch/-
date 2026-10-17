@@ -75,3 +75,18 @@ def test_coverage_matrix_does_not_promote_rule_from_single_signal():
         assert "capabilities" in entry
         if entry["signals"]>0:
             assert entry["capabilities"]["waiting_15_sessions"]["status"]=="UNVERIFIED"
+
+def test_same_day_waiting_transition_is_legal():
+    from history_replay_audit import _state_checks
+    e={"event_type":"SPRING","event_id":"e","event_date":"2026-07-06","current_state":"TEST_CANDIDATE","transition_history":[{"date":"2026-07-06","from":None,"to":"CANDIDATE"},{"date":"2026-07-07","from":"CANDIDATE","to":"WAITING_TEST"},{"date":"2026-07-07","from":"WAITING_TEST","to":"TEST_CANDIDATE"}]}
+    assert not [x for x in _state_checks([e]) if x["type"] in ("date_regression","non_increasing_trading_dates")]
+
+def test_transition_date_regression_and_illegal_same_day_fail():
+    from history_replay_audit import _state_checks
+    e={"event_type":"SPRING","event_id":"e","event_date":"2026-07-06","current_state":"WAITING_TEST","transition_history":[{"date":"2026-07-07","from":None,"to":"CANDIDATE"},{"date":"2026-07-06","from":"CANDIDATE","to":"WAITING_TEST"}]}
+    issues=_state_checks([e]); assert any(x["type"]=="date_regression" for x in issues) and any(x["type"]=="transition_from_mismatch" for x in issues)
+
+def test_zero_days_is_not_pass():
+    import history_replay_audit as h
+    r=h.audit("600001.SH",frame(0))
+    assert r["status"]=="UNVERIFIED"
