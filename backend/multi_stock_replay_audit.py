@@ -54,8 +54,30 @@ def _results_meta(path):
         if connection is not None:
             connection.close()
 
+def _code_digest():
+    digest = hashlib.sha256()
+    for module in (sys.modules.get("history_replay_audit"), sys.modules.get("strategy_a")):
+        filename = getattr(module, "__file__", None)
+        if filename and os.path.exists(filename):
+            with open(filename, "rb") as stream:
+                digest.update(stream.read())
+    return digest.hexdigest()
+
+def _database_identity(path):
+    absolute = os.path.abspath(os.fspath(path))
+    stat = os.stat(absolute)
+    connection = None
+    try:
+        connection = _ro(absolute)
+        schema = connection.execute("pragma schema_version").fetchone()[0]
+        journal = connection.execute("pragma journal_mode").fetchone()[0]
+        return {"size":stat.st_size,"mtime_ns":stat.st_mtime_ns,"schema_version":schema,"journal_mode":journal}
+    finally:
+        if connection is not None:
+            connection.close()
+
 def _fingerprint(path, stocks, asof, results_db):
-    payload = {"database":os.path.abspath(os.fspath(path)),"stocks":list(stocks),"asof":asof,"results_db":os.path.abspath(os.fspath(results_db)) if results_db else None,"strategy_version":STRATEGY_VERSION,"audit_config":AUDIT_CONFIG_VERSION}
+    payload = {"database":os.path.abspath(os.fspath(path)),"database_identity":_database_identity(path),"stocks":list(stocks),"asof":asof,"results_db":os.path.abspath(os.fspath(results_db)) if results_db else None,"strategy_version":STRATEGY_VERSION,"audit_config":AUDIT_CONFIG_VERSION,"code_digest":_code_digest()}
     return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True).encode("utf-8")).hexdigest()
 
 def _atomic_json(path, value):
