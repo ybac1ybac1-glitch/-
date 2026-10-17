@@ -13,7 +13,9 @@ def audit_database(path,stocks,asof=None):
     out={"status":"PASS","database":path,"stocks_requested":stocks,"stocks_audited":0,"stocks_failed":0,"results":[],"summary":{"PASS":0,"FAIL":0,"UNVERIFIED":0}}
     c=None
     try:
-        c=_ro(path); tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
+        try:c=_ro(path)
+        except Exception as e: out["status"]="UNVERIFIED";out["error"]=str(e);return out
+        tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
         if "daily" not in tables:
             out["status"]="UNVERIFIED";out["error"]="daily表不存在";return out
         for code in stocks:
