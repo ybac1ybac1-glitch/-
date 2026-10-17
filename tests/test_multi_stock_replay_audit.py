@@ -1,0 +1,17 @@
+import sqlite3,sys
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).parents[1]/"backend"))
+from multi_stock_replay_audit import audit_database
+
+def test_batch_failure_isolated(tmp_path):
+ p=tmp_path/"m.sqlite3";c=sqlite3.connect(p);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)")
+ for i in range(30):c.execute("insert into daily values('000001.SZ',?,?,?,?,?,?)",(f"202601{i+1:02d}",10,11,9,10,100,1000))
+ c.commit();c.close()
+ r=audit_database(str(p),["000001.SZ","MISSING.SZ"]);assert r["stocks_audited"]==2 and r["summary"]["UNVERIFIED"]>=1
+
+def test_missing_db_unverified(tmp_path):
+ r=audit_database(str(tmp_path/"missing.sqlite3"),["000001.SZ"]);assert r["status"]=="UNVERIFIED"
+
+def test_read_only_batch_does_not_write(tmp_path):
+ p=tmp_path/"m.sqlite3";c=sqlite3.connect(p);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)");c.commit();c.close()
+ before=p.stat().st_size;audit_database(str(p),["000001.SZ"]);assert p.stat().st_size==before
