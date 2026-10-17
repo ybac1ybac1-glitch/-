@@ -51,3 +51,9 @@ python -m strategy_a_audit --results backend\strategy_a_results.sqlite3 --market
 持久化结果审计统计已执行：规则字段、状态、重复记录、信号/股票计数、行情追溯和 OHLC 有限性/边界检查。
 
 策略逻辑审计仍标记为“未验证”：仅凭保存结果不能证明 A01–A09 的逐日条件、冻结区间、15 日等待、状态终态和未来数据约束全部正确；这些需要独立回放和人工核对。审计模块不会调整阈值或生成新信号。
+
+### 持久化字段边界
+
+审计报告同时输出 `persistence_audit.strategy_fields`、`validation_fields` 和 `persisted_fields`。策略计算字段来自 `strategy_a.py` 的规则 Evidence；validation 层负责传递结果；结果库只审计实际 JSON evidence 中保存的字段。策略计算过但未持久化的字段标记为“持久化证据不足，无法验证”，不等同于策略条件错误。
+
+旧版 daily 表若没有 `amount`，报告会显示“数据库未提供 amount 字段”，仍可校验 OHLCV；只有 OHLCV 缺失、非有限、非正或边界非法时才标记行情异常。
