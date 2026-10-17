@@ -22,3 +22,9 @@ python -m history_replay_audit --csv work\sample_600001.csv --symbol 600001.SH -
 ```
 
 本阶段不执行全市场扫描，不自动修复发现的策略问题。
+
+## 状态矩阵
+
+Spring 合法转换：START→CANDIDATE→WAITING_TEST→TEST_CANDIDATE/INVALIDATED/EXPIRED。SOS 合法转换：START→CANDIDATE→WAITING_LPS→LPS_CANDIDATE/INVALIDATED/EXPIRED。转换日期必须严格递增并来自有效交易日；终态后不能继续转换。审计不把新的独立事件误报为旧事件恢复。
+
+证据差异比较会递归规范化字典、列表、pandas/NumPy 标量、日期、空值和浮点数；仅排除策略参数元数据，不排除实际量价证据。故障注入测试覆盖非法转换和证据变化；真实历史结果库没有逐日快照时仍为 UNVERIFIED。
