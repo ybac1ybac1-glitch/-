@@ -32,9 +32,11 @@ def _finite_positive(v):
 
 def _market_check(c,code,date):
     if not c:return "market_not_checked",None
-    
-    try: row=c.execute("SELECT open,high,low,close,vol,amount FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()
-    except sqlite3.OperationalError: row=c.execute("SELECT open,high,low,close,vol FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()
+    key=str(date).replace("-","").replace("/","")
+    try:
+        row=c.execute("SELECT open,high,low,close,vol,amount FROM daily WHERE ts_code=? AND replace(replace(trade_date,'-',''),'/','')=?",(code,key)).fetchone()
+    except sqlite3.OperationalError:
+        row=c.execute("SELECT open,high,low,close,vol FROM daily WHERE ts_code=? AND replace(replace(trade_date,'-',''),'/','')=?",(code,key)).fetchone()
     if not row:return "market_row_missing",None
     if any(v is None for v in row[:5]):return "market_field_missing",row
     o,h,l,cl,vol=map(float,row[:5]); amount=float(row[5]) if len(row)>5 else 0.0
@@ -45,7 +47,7 @@ def _market_check(c,code,date):
     return None,row
 
 def audit(results_path,market_path=None):
-    out={"status":"NO_SNAPSHOT","read_only":True,"rule_requirements":{r:{"required":list(v),"optional":list(RULE_NOT_REQUIRED.get(r,()))} for r,v in RULE_REQUIREMENTS.items()},"rules":{r:{"total":0,"states":{}} for r in RULE_REQUIREMENTS},"state_summary":{"candidate":0,"confirmed":0,"invalidated":0,"watch":0},"evidence":{"complete":0,"incomplete":0,"missing_reasons":{}},"duplicates":{"exact_records":0,"same_event_state_changes":[],"cross_rule_event_references":[],"empty_event_id_excluded":0},"mismatches":[],"untraceable":[],"suspicious":[],"data_checks":{"checked":0,"abnormal":0,"market_rows_checked":0}}
+    out={"status":"NO_SNAPSHOT","read_only":True,"rule_requirements":{r:{"required":list(v),"optional":list(RULE_NOT_REQUIRED.get(r,()))} for r,v in RULE_REQUIREMENTS.items()},"rules":{r:{"total":0,"states":{}} for r in RULE_REQUIREMENTS},"state_summary":{"candidate":0,"confirmed":0,"invalidated":0,"watch":0},"evidence":{"complete":0,"incomplete":0,"missing_reasons":{}},"duplicates":{"exact_records":0,"same_event_state_changes":[],"cross_rule_event_references":[],"empty_event_id_excluded":0},"mismatches":[],"untraceable":[],"suspicious":[],"data_checks":{"checked":0,"abnormal":0,"market_rows_checked":0,"market_rows_matched":0,"market_rows_missing":0}}
     rc=mc=None
     try:
         if not os.path.exists(results_path):out["status"]="RESULT_DB_MISSING";return out
@@ -78,7 +80,11 @@ def audit(results_path,market_path=None):
                 if field in ev and ev[field] is not None and not _finite_positive(ev[field]):reasons.append(field+"非法")
             if ev.get("event_date") and date and str(ev["event_date"])>str(date):reasons.append("事件日期晚于信号日期")
             issue,bar=_market_check(mc,code,date);out["data_checks"]["checked"]+=bool(mc);out["data_checks"]["market_rows_checked"]+=bool(mc)
-            if issue and issue!="market_not_checked":reasons.append(issue);out["data_checks"]["abnormal"]+=1 if issue!="market_row_missing" else 0
+            if issue and issue!="market_not_checked":
+                reasons.append(issue)
+                if issue=="market_row_missing": out["data_checks"]["market_rows_missing"]+=1
+                else: out["data_checks"]["abnormal"]+=1
+            elif mc: out["data_checks"]["market_rows_matched"]+=1
             if reasons:
                 out["evidence"]["incomplete"]+=1
                 for x in set(reasons):out["evidence"]["missing_reasons"][x]=out["evidence"]["missing_reasons"].get(x,0)+1
@@ -95,6 +101,7 @@ def audit(results_path,market_path=None):
         out["audit_conclusions"]={"verified":["持久化统计和字段审计","只读数据库连接","OHLC有限性及边界检查"],"findings":[],"evidence_insufficient":["无用户真实数据库不复现本地样本","逻辑时序仍需独立回放验证"]}
         if out["mismatches"]:out["audit_conclusions"]["findings"].append("扫描快照计数与实际信号/股票数量不一致")
         if out["untraceable"]:out["audit_conclusions"]["findings"].append("存在规则证据缺失或不可追溯信号")
+        out["persistence_audit"]["persisted_fields"]=sorted(out["persistence_audit"].get("persisted_fields",()))
         return out
     finally:
         if mc:mc.close()
