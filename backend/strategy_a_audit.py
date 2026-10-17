@@ -16,7 +16,7 @@ def _safe_json(value):
 
 def audit(results_path, market_path=None):
     report={"status":"NO_SNAPSHOT","read_only":True,"rules":{r:{"total":0,"states":Counter()} for r in RULES},
-            "state_totals":Counter(),"evidence":{"complete":0,"incomplete":0,"missing_reasons":Counter()},
+            "state_totals":Counter(),"status_summary":{"candidate":0,"confirmed":0,"invalidated":0},"evidence":{"complete":0,"incomplete":0,"missing_reasons":Counter()},
             "duplicates":{"exact_signal_rows":0,"event_rule_dates":[],"cross_rule_events":[]},
             "untraceable":[],"suspicious":[],"examples":[],"data_checks":{"market_rows_checked":0,"abnormal_rows":0}}
     rc=None; mc=None
