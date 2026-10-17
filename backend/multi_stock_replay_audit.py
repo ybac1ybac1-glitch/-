@@ -10,6 +10,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from urllib.parse import quote
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -22,9 +23,9 @@ AUDIT_CONFIG_VERSION = "P3.8.1-v1"
 STRATEGY_VERSION = "A-P2.2-0.3"
 
 def _ro(path):
-    absolute = os.path.abspath(os.fspath(path)).replace("\\\\", "/")
-    return sqlite3.connect("file:" + absolute + "?mode=ro", uri=True)
-
+    absolute = os.path.abspath(os.fspath(path)).replace("\\", "/")
+    uri = "file:" + quote(absolute, safe="/:") + "?mode=ro"
+    return sqlite3.connect(uri, uri=True)
 def _date(value):
     text = str(value).strip()
     parsed = pd.to_datetime(text, format="%Y%m%d" if text.isdigit() and len(text)==8 else "%Y-%m-%d", errors="coerce")
