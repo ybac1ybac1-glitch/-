@@ -1,8 +1,18 @@
-<!doctype html><meta charset="utf-8"><title>策略 A · V4 复盘</title>
+<!doctype html><meta charset="utf-8"><title>策略 A · V4 盘后复盘</title>
+<style>body{font-family:Arial;margin:24px}table{border-collapse:collapse;width:100%}td,th{padding:8px;border:1px solid #ddd}.bar{padding:12px;background:#f4f6f8;margin-bottom:16px}.error{color:#b00}</style>
 <h1>策略 A · V4 盘后复盘</h1>
-<p>状态：{{ status.status }}　已处理 {{ status.processed }}/{{ status.total }}　失败 {{ status.failed }}　日期 {{ status.asof_date or '未开始' }}</p>
-<form method="post" action="/strategy/a/v4/start"><button>开始复盘</button></form>
-{% if result.scan %}<p>复盘日期：{{ result.scan.asof_date }}，命中股票：{{ result.scan.stock_count }}，信号：{{ result.scan.signal_count }}</p>
-<table border="1"><tr><th>代码</th><th>规则</th><th>状态</th><th>信号日期</th><th>事件ID</th></tr>
-{% for x in result.items %}<tr><td>{{ x.ts_code }}</td><td>{{ x.rule_id }}</td><td>{{ x.state }}</td><td>{{ x.signal_date }}</td><td>{{ x.event_id }}</td></tr>{% endfor %}</table>
-{% else %}<p>尚无成功保存的复盘结果。点击“开始复盘”后后台运行，页面可继续查看旧结果。</p>{% endif %}
+<div class="bar"><span id="status">状态：{{ status.status }}</span>　<span id="progress">已处理 {{ status.processed }}/{{ status.total }}</span>　<span id="failed">失败 {{ status.failed }}</span>　<span id="date">日期 {{ status.asof_date or '未开始' }}</span></div>
+<button id="start">开始复盘</button> <span id="notice"></span>
+<div><label>规则 <select id="rule"><option value="">全部</option>{% for i in range(1,10) %}<option>A0{{ i }}</option>{% endfor %}</select></label>
+<label>状态 <select id="state"><option value="">全部</option><option>CANDIDATE</option><option>CONFIRMED</option><option>INVALIDATED</option></select></label>
+<label>代码 <input id="code"></label><button onclick="load(1)">筛选</button></div>
+<div id="summary">{% if result.scan %}上次成功复盘：{{ result.scan.asof_date }}，命中股票 {{ result.scan.stock_count }}，信号 {{ result.scan.signal_count }}{% else %}尚无保存结果{% endif %}</div>
+<table><thead><tr><th>代码</th><th>规则</th><th>状态</th><th>日期</th><th>事件</th><th>详情</th></tr></thead><tbody id="rows"></tbody></table>
+<button onclick="load(page-1)" id="prev">上一页</button><button onclick="load(page+1)" id="next">下一页</button>
+<script>
+let page=1, size=50, timer=null;
+function qs(){let p=new URLSearchParams({page,page_size:size});let r=rule.value,s=state.value,c=code.value.trim();if(r)p.set('rule_id',r);if(s)p.set('state',s);if(c)p.set('code',c);return p}
+async function load(p){if(p<1)return;page=p;let r=await fetch('/strategy/a/v4/results?'+qs());let d=await r.json();let body=document.getElementById('rows');body.innerHTML='';(d.items||[]).forEach(x=>{let tr=document.createElement('tr');tr.innerHTML='<td>'+x.ts_code+'</td><td>'+x.rule_id+'</td><td>'+x.state+'</td><td>'+x.signal_date+'</td><td>'+x.event_id+'</td><td><a href="/stock/'+x.ts_code+'">查看K线</a></td>';body.appendChild(tr)});prev.disabled=page<=1;next.disabled=(d.items||[]).length<size;summary.textContent=d.scan?'复盘日期 '+d.scan.asof_date+'，命中股票 '+d.scan.stock_count+'，信号 '+d.scan.signal_count:''}
+async function poll(){let d=await (await fetch('/strategy/a/v4/status')).json();status.textContent='状态：'+d.status;progress.textContent='已处理 '+d.processed+'/'+d.total;failed.textContent='失败 '+d.failed;date.textContent='日期 '+(d.asof_date||'未开始');if(d.status==='RUNNING')timer=setTimeout(poll,1000);else{load(1);notice.textContent=d.status==='FAILED'?'扫描失败：'+(d.error||'未知错误'):'已完成'}} 
+start.onclick=async()=>{let r=await fetch('/strategy/a/v4/start',{method:'POST'});let d=await r.json();if(r.status===409){notice.textContent='已有扫描任务运行中';return}if(!r.ok){notice.textContent=d.error||'启动失败';return}notice.textContent='后台扫描已启动';poll()};load(1);
+</script>
