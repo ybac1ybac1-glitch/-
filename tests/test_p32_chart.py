@@ -27,7 +27,7 @@ def test_kline_missing_symbol_is_clear_404(tmp_path,monkeypatch):
 def test_chart_template_javascript_parses():
     text=Path(__file__).parents[1].joinpath("backend","templates","strategy_a_v4_stock.html").read_text(encoding="utf-8")
     script=re.search(r"<script>(.*?)</script>",text,re.S).group(1)
-    script=re.sub(r"\\{\\{.*?\\}\\}","null",script)
+    script=re.sub(r"\{\{.*?\}\}","null",script)
     node=shutil.which("node")
     if not node: return
     with tempfile.NamedTemporaryFile("w",suffix=".js",encoding="utf-8",delete=False) as f:
