@@ -193,7 +193,9 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
                 if progress:
                     state = "异常" if execution_error else result.get("status", "UNVERIFIED")
                     _progress(f"[{position}/{len(requested)}] 完成 {code}，已完成 {len(entries)}，耗时 {elapsed:.2f}s，{state}")
-            out["timing"]["per_stock"][code] = {"total_seconds": elapsed, "data_preparation_seconds": prep_elapsed, "audit_frame_seconds": audit_elapsed}\n            out["timing"]["phase_totals"]["data_preparation_seconds"] += prep_elapsed\n            out["timing"]["phase_totals"]["audit_frame_seconds"] += audit_elapsed
+            out["timing"]["per_stock"][code] = {"total_seconds": elapsed, "data_preparation_seconds": prep_elapsed, "audit_frame_seconds": audit_elapsed}
+            out["timing"]["phase_totals"]["data_preparation_seconds"] += prep_elapsed
+            out["timing"]["phase_totals"]["audit_frame_seconds"] += audit_elapsed
             out["results"].append(result)
             out["processed"] += 1
             status = result.get("status", "UNVERIFIED")
