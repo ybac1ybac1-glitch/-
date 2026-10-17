@@ -71,8 +71,8 @@ def audit_frame(symbol,frame,dates=None):
                 r["future_leakage_count"]+=1;r["cases"].append({"type":"future_event_transition","symbol":symbol,"date":asof,"event_id":e.get("event_id")})
             key=e.get("event_id")
             frozen=(e.get("event_date"),e.get("frozen_support"),e.get("frozen_resistance"),e.get("frozen_volume_baseline"))
-            if key and key in ids and ids[key]!=frozen:r["frozen_evidence_anomalies"]+=1;r["cases"].append({"type":"frozen_evidence_changed","event_id":key,"before":ids[key],"after":frozen})
-            if key:ids[key]=frozen
+            if key and key in freeze_history and freeze_history[key]!=frozen:r["frozen_evidence_anomalies"]+=1;r["cases"].append({"type":"frozen_evidence_changed","event_id":key,"before":freeze_history[key],"after":frozen})
+            if key:freeze_history[key]=frozen
     for rule in ("A03","A04","A05","A06"):
         if r["coverage"][rule]["status"]=="UNVERIFIED": r["unverified"].append(rule+"未触发对应事件或等待状态，无法证明完整状态机")
     if any(r[k] for k in ("future_leakage_count","state_transition_anomalies","frozen_evidence_anomalies","repeatability_anomalies")):r["status"]="FAIL"
