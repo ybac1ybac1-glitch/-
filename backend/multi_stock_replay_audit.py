@@ -17,7 +17,7 @@ def _results_meta(path):
   c=_ro(path);tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
   if "scans" not in tables or "signals" not in tables:return {"status":"UNVERIFIED","reason":"结果库缺少可识别的scans/signals表"}
   cols={r[1] for r in c.execute("pragma table_info(scans)")}
-  required={"id","asof_date","signal_count","valid"}
+  required={"id","asof_date","signal_count","partial","valid"}
   if not required<=cols:return {"status":"UNVERIFIED","reason":"scans字段不兼容"}
   row=c.execute("select id,asof_date,signal_count,partial from scans where valid=1 order by id desc limit 1").fetchone()
   if not row:return {"status":"UNVERIFIED","reason":"结果库没有有效快照"}
@@ -35,6 +35,8 @@ def audit_database(path,stocks,asof=None,results_db=None):
   tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
   if "daily" not in tables:out.update(status="UNVERIFIED",error="daily表不存在");return out
   cutoff=_date(asof) if asof else None
+  if asof is not None and cutoff is None:
+   out.update(status="UNVERIFIED",error="asof格式或日期无效，必须为YYYYMMDD或YYYY-MM-DD");return out
   for code in stocks:
    try:
     frame=pd.read_sql_query("select * from daily where ts_code=? order by trade_date",c,params=[code])
