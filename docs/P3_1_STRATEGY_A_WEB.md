@@ -24,3 +24,6 @@ python app.py
 
 ## 状态含义
 页面区分空状态、RUNNING 进度、COMPLETED 历史快照和 FAILED 错误；候选、确认、失效状态按原策略事件输出，候选不等同于可成交买点。
+
+## 股票详情
+列表中的“查看 K 线”进入 `/strategy/a/v4/stock/<ts_code>`。详情页通过 SQLite `mode=ro` 读取本地日线和成交量，并读取当前有效快照中的信号证据；不会调用 Tushare、公告/新闻接口，也不会重新运行策略。页面刷新时会先读取状态接口，若状态为 RUNNING 会自动继续轮询。
