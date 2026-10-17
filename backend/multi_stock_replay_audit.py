@@ -63,7 +63,7 @@ def _code_digest():
                 digest.update(stream.read())
     return digest.hexdigest()
 
-def _database_identity(path):
+def _database_identity(path, stocks=()):
     absolute = os.path.abspath(os.fspath(path))
     stat = os.stat(absolute)
     connection = None
@@ -71,14 +71,14 @@ def _database_identity(path):
         connection = _ro(absolute)
         schema = connection.execute("pragma schema_version").fetchone()[0]
         journal = connection.execute("pragma journal_mode").fetchone()[0]
-        return {"size":stat.st_size,"mtime_ns":stat.st_mtime_ns,"schema_version":schema,"journal_mode":journal}
+        aggregates = []\n        for symbol in stocks:\n            row = connection.execute("select count(*), max(rowid), max(trade_date), sum(coalesce(close,0)), sum(coalesce(vol,0)) from daily where ts_code=?", (symbol,)).fetchone()\n            aggregates.append([symbol, list(row) if row else None])\n        return {"size":stat.st_size,"mtime_ns":stat.st_mtime_ns,"schema_version":schema,"journal_mode":journal,"stock_aggregates":aggregates}
     finally:
         if connection is not None:
             connection.close()
 
 def _fingerprint(path, stocks, asof, results_db):
     try:
-        identity = _database_identity(path)
+        identity = _database_identity(path, stocks)
     except (OSError, sqlite3.Error) as exc:
         identity = {"unavailable": type(exc).__name__, "detail": str(exc)}
     payload = {"database":os.path.abspath(os.fspath(path)),"database_identity":identity,"stocks":list(stocks),"asof":asof,"results_db":os.path.abspath(os.fspath(results_db)) if results_db else None,"strategy_version":STRATEGY_VERSION,"audit_config":AUDIT_CONFIG_VERSION,"code_digest":_code_digest()}
