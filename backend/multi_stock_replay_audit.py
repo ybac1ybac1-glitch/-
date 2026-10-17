@@ -179,7 +179,7 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
                             audit_started = time.perf_counter()
                             result = dict(evaluator(code, use, None))
                             result["actual_asof"] = actual.strftime("%Y-%m-%d")
-                            audit_elapsed = time.perf_counter()
+                            audit_elapsed = time.perf_counter() - audit_started
                     elapsed = time.perf_counter() - one_started
                 except KeyboardInterrupt:
                     save_checkpoint(entries, interrupted=True)
