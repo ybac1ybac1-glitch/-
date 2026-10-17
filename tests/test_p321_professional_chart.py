@@ -29,7 +29,7 @@ def test_api_keeps_real_order_and_range(tmp_path,monkeypatch):
 def test_professional_chart_javascript_syntax():
     t=Path(__file__).parents[1].joinpath("backend/templates/strategy_a_v4_stock.html").read_text()
     script=re.search(r"<script>(.*?)</script>",t,re.S).group(1)
-    script=re.sub(r"\{\{.*?\}\}","null",script)
+    script=re.sub(r"\{\{.*?\}\}","[]",script)
     node=shutil.which("node")
     if not node:return
     with tempfile.NamedTemporaryFile("w",suffix=".js",delete=False) as f:
