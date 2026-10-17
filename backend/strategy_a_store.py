@@ -20,13 +20,13 @@ def start(cache_path,result_path,asof_date=None,batch_size=100,max_stocks=None):
   try:
    r=validate_cache(cache_path,asof_date,batch_size=batch_size,max_stocks=max_stocks,progress=lambda x:STATE.update(processed=x["processed"],total=x["total"],failed=x["failed"],asof_date=x.get("asof_date")))
    if r.get("errors"): raise RuntimeError(";".join(r["errors"]))
-   c=_db(result_path); c.execute("UPDATE scans SET valid=0 WHERE valid=1")
+   c=_db(result_path)
    cur=c.execute("INSERT INTO scans(asof_date,created_at,stock_count,signal_count,failed,partial,valid) VALUES(?,?,?,?,?,?,0)",(r["asof_date"],datetime.now().isoformat(),r["total_matches"],r["total_signals"],r["failed"],int(max_stocks is not None)))
    sid=cur.lastrowid
    for row in r.get("results",[]):
     for sig in row.get("signals",[]):
      c.execute("INSERT OR REPLACE INTO signals VALUES(?,?,?,?,?,?,?)",(sid,row["ts_code"],sig["rule_id"],sig["state"],sig["signal_date"],sig.get("event_id",""),json.dumps(sig,ensure_ascii=False)))
-   c.execute("UPDATE scans SET valid=1 WHERE id=?",(sid,));c.commit();c.close();STATE["status"]="COMPLETED";STATE["finished_at"]=datetime.now().isoformat()
+   c.execute("UPDATE scans SET valid=0 WHERE valid=1 AND id<>?",(sid,)); c.execute("UPDATE scans SET valid=1 WHERE id=?",(sid,)); c.commit(); c.close(); STATE["status"]="COMPLETED"; STATE["finished_at"]=datetime.now().isoformat()
   except Exception as e:STATE.update(status="FAILED",error=str(e))
   finally:LOCK.release()
  threading.Thread(target=run,daemon=True).start();return {"status":"RUNNING"},202
