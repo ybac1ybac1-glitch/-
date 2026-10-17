@@ -15,7 +15,7 @@ def test_compact_preserves_structured_evidence():
     json.dumps(x)
 
 def make_db(p,evidence):
- c=sqlite3.connect(p);c.execute("create table scans(id integer primary key,asof_date text,created_at text,stock_count integer,signal_count integer,failed integer,partial integer,valid integer)");c.execute("create table signals(scan_id integer,ts_code text,rule_id text,state text,signal_date text,event_id text,evidence text)");c.execute("insert into scans values(1,'20261015','',1,1,0,0,1)");c.execute("insert into signals values(1,'600001.SH','A01','CANDIDATE','20261015','','?')",(json.dumps(evidence),));c.commit();c.close()
+ c=sqlite3.connect(p);c.execute("create table scans(id integer primary key,asof_date text,created_at text,stock_count integer,signal_count integer,failed integer,partial integer,valid integer)");c.execute("create table signals(scan_id integer,ts_code text,rule_id text,state text,signal_date text,event_id text,evidence text)");c.execute("insert into scans values(1,'20261015','',1,1,0,0,1)");c.execute("insert into signals values(1,'600001.SH','A01','CANDIDATE','20261015','' ,?)",(json.dumps(evidence),));c.commit();c.close()
 
 def test_audit_new_nested_and_old_flat_evidence(tmp_path):
  p=tmp_path/"r.sqlite3";make_db(p,{"evidence_version":"A-EVIDENCE-1","evidence":{"valid":True,"support":10,"resistance":12,"width":.2,"slope":0,"valid_sessions":80}})
