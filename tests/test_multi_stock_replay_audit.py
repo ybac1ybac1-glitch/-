@@ -7,7 +7,7 @@ def test_batch_failure_isolated(tmp_path):
  p=tmp_path/"m.sqlite3";c=sqlite3.connect(p);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)")
  for i in range(30):c.execute("insert into daily values('000001.SZ',?,?,?,?,?,?,?)",(f"202601{i+1:02d}",10,11,9,10,100,1000))
  c.commit();c.close()
- r=audit_database(str(p),["000001.SZ","MISSING.SZ"]);assert r["stocks_audited"]==1 and r["completed"]==1 and r["unverified"]>=1 and r["summary"]["UNVERIFIED"]>=1
+ r=audit_database(str(p),["000001.SZ","MISSING.SZ"]);assert r["stocks_audited"]==2 and r["completed"]==2 and r["unverified"]>=1 and r["summary"]["UNVERIFIED"]>=1
 
 def test_missing_db_unverified(tmp_path):
  r=audit_database(str(tmp_path/"missing.sqlite3"),["000001.SZ"]);assert r["status"]=="UNVERIFIED"
@@ -47,3 +47,136 @@ def test_valid_results_db_json_and_counter_consistency(tmp_path):
  c.commit();c.close()
  c=sqlite3.connect(rdb);c.execute("create table scans(id integer primary key,asof_date text,signal_count integer,partial integer,valid integer)");c.execute("create table signals(scan_id integer)");c.execute("insert into scans values(1,'2026-01-03',0,0,1)");c.commit();c.close()
  r=audit_database(str(p),["000001.SZ"],asof="2026-01-03",results_db=str(rdb));json.dumps(r);assert r["requested"]==1 and r["completed"]==1 and r["failed"]==0 and r["stocks_audited"]==1
+
+def _make_daily(path, symbols=("A.SZ","B.SZ")):
+ c=sqlite3.connect(path);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)")
+ for symbol in symbols:
+  c.execute("insert into daily values(?,?,?,?,?,?,?,?)",(symbol,"2026-01-01",10,11,9,10,100,1000))
+ c.commit();c.close()
+
+def test_progress_is_stderr_and_checkpoint_is_atomic(tmp_path, capsys):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ calls=[]
+ def fake(symbol, frame, _):
+  calls.append(symbol); return {"symbol":symbol,"status":"PASS","trading_days_checked":1}
+ report=audit_database(str(db),["A.SZ","B.SZ"],checkpoint=checkpoint,audit_fn=fake)
+ captured=capsys.readouterr()
+ assert "[1/2]" in captured.err and "A.SZ" in captured.err and "PASS" in captured.err
+ assert report["processed"]==2 and checkpoint.exists()
+ payload=json.loads(checkpoint.read_text(encoding="utf-8"))
+ assert payload["partial"] is True and len(payload["completed"])==2
+
+def test_ctrl_c_checkpoint_and_resume_skips_completed(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ calls=[]; interrupted={"value":False}
+ def first(symbol, frame, _):
+  calls.append(symbol)
+  if symbol=="B.SZ" and not interrupted["value"]:
+   interrupted["value"]=True; raise KeyboardInterrupt
+  return {"symbol":symbol,"status":"PASS","trading_days_checked":1}
+ try:
+  audit_database(str(db),["A.SZ","B.SZ"],checkpoint=checkpoint,audit_fn=first,progress=False)
+ except KeyboardInterrupt:
+  pass
+ assert checkpoint.exists() and calls==["A.SZ","B.SZ"]
+ calls2=[]
+ def second(symbol, frame, _):
+  calls2.append(symbol); return {"symbol":symbol,"status":"PASS","trading_days_checked":1}
+ resumed=audit_database(str(db),["A.SZ","B.SZ"],checkpoint=checkpoint,audit_fn=second,progress=False)
+ assert calls2==["B.SZ"] and resumed["processed"]==2 and resumed["checkpoint"]["status"]=="COMPLETE"
+
+def test_checkpoint_fingerprint_mismatch_does_not_reuse(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ def fake(symbol, frame, _): return {"symbol":symbol,"status":"PASS","trading_days_checked":1}
+ audit_database(str(db),["A.SZ"],asof="2026-01-01",checkpoint=checkpoint,audit_fn=fake,progress=False)
+ calls=[]
+ audit_database(str(db),["A.SZ"],asof="2026-01-02",checkpoint=checkpoint,audit_fn=lambda s,f,x:(calls.append(s) or {"symbol":s,"status":"PASS"}),progress=False)
+ assert calls==["A.SZ"]
+
+def test_failed_stock_is_checkpointed_and_isolated(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ def fake(symbol, frame, _):
+  if symbol=="B.SZ": raise RuntimeError("synthetic failure")
+  return {"symbol":symbol,"status":"PASS"}
+ report=audit_database(str(db),["A.SZ","B.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert report["processed"]==2 and report["failed"]==1 and report["stocks_audited"]==1
+
+
+def test_normal_fail_conclusion_counts_completed_not_failed(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ def fake(symbol, frame, _): return {"symbol":symbol,"status":"FAIL","trading_days_checked":1}
+ report=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert report["requested"]==1 and report["processed"]==1
+ assert report["completed"]==1 and report["failed"]==0
+ assert report["summary"]["FAIL"]==1 and report["stocks_audited"]==1
+
+def test_execution_exception_is_not_checkpointed_and_retries(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ calls=[]; fail_once={"value":True}
+ def fake(symbol, frame, _):
+  calls.append(symbol)
+  if fail_once["value"]:
+   fail_once["value"]=False; raise RuntimeError("transient")
+  return {"symbol":symbol,"status":"PASS","trading_days_checked":1}
+ first=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert first["processed"]==1 and first["failed"]==1 and first["completed"]==0
+ second=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert calls==["A.SZ","A.SZ"] and second["completed"]==1 and second["failed"]==0
+
+def test_database_content_identity_invalidates_checkpoint(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ calls=[]
+ def fake(symbol, frame, _): calls.append(symbol); return {"symbol":symbol,"status":"PASS"}
+ audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ connection=sqlite3.connect(db)
+ connection.execute("insert into daily values(?,?,?,?,?,?,?,?)",("A.SZ","2026-01-02",10,11,9,10,100,1000))
+ connection.commit(); connection.close()
+ calls.clear()
+ resumed=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert calls==["A.SZ"] and resumed["checkpoint"]["load_status"]=="MISMATCH"
+
+def test_checkpoint_counter_invariants(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db,("A.SZ","B.SZ"))
+ def fake(symbol, frame, _):
+  if symbol=="B.SZ": raise RuntimeError("failed")
+  return {"symbol":symbol,"status":"UNVERIFIED"}
+ report=audit_database(str(db),["A.SZ","B.SZ","C.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert report["requested"]==3
+ assert report["processed"]==3
+ assert report["completed"]==2
+ assert report["failed"]==1
+ assert report["unverified"]==2
+ assert report["processed"]==report["completed"]+report["failed"]
+
+
+def test_phase_timings_are_nonnegative_and_sum_consistently(tmp_path):
+ db=tmp_path/"m.sqlite3"; _make_daily(db)
+ import time
+ def fake(symbol, frame, _):
+  time.sleep(0.01)
+  return {"symbol":symbol,"status":"PASS"}
+ report=audit_database(str(db),["A.SZ"],audit_fn=fake,progress=False)
+ one=report["timing"]["per_stock"]["A.SZ"]
+ assert one["total_seconds"] >= 0
+ assert one["data_preparation_seconds"] >= 0
+ assert one["audit_frame_seconds"] >= 0
+ assert one["audit_frame_seconds"] <= one["total_seconds"]
+ phases=report["timing"]["phase_totals"]
+ assert phases["data_preparation_seconds"] >= 0
+ assert phases["audit_frame_seconds"] >= one["audit_frame_seconds"]
+
+def test_windows_style_path_with_spaces_is_read_only(tmp_path):
+ db=tmp_path/"中文 folder"/"market cache.sqlite3"; db.parent.mkdir()
+ _make_daily(db)
+ before=db.stat().st_size
+ report=audit_database(str(db),["A.SZ"],progress=False,audit_fn=lambda s,f,x: {"symbol":s,"status":"PASS"})
+ assert report["completed"]==1
+ assert db.stat().st_size==before
+
+def test_real_audit_frame_resume_results_match(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ first=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,progress=False)
+ second=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,progress=False)
+ assert first["results"][0]["status"] == second["results"][0]["status"]
+ assert first["results"][0].get("trading_days_checked") == second["results"][0].get("trading_days_checked")
+ assert first["results"][0].get("signals_checked") == second["results"][0].get("signals_checked")
