@@ -32,7 +32,9 @@ def _finite_positive(v):
 
 def _market_check(c,code,date):
     if not c:return "market_not_checked",None
-    \n    try: row=c.execute("SELECT open,high,low,close,vol,amount FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()\n    except sqlite3.OperationalError: row=c.execute("SELECT open,high,low,close,vol FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()
+    
+    try: row=c.execute("SELECT open,high,low,close,vol,amount FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()
+    except sqlite3.OperationalError: row=c.execute("SELECT open,high,low,close,vol FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()
     if not row:return "market_row_missing",None
     if any(v is None for v in row):return "market_field_missing",row
     o,h,l,cl,vol=map(float,row[:5]); amount=float(row[5]) if len(row)>5 else 0.0
