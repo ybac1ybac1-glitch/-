@@ -8,7 +8,7 @@ from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
 from validation import validate_cache,start as start_validation,status as validation_status,get_results
 from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results
-import os, sqlite3
+import os, sqlite3, json
 app=Flask(__name__)
 
 def _p1rows(strategy=None):
@@ -98,6 +98,33 @@ def strategy_a_v4_start():
     return jsonify(result),code
 @app.get('/strategy/a/v4/status')
 def strategy_a_v4_status(): return jsonify(a_web_status())
+
+@app.get('/strategy/a/v4/stock/<ts_code>')
+def strategy_a_v4_stock(ts_code):
+    cache_path=os.path.join(os.path.dirname(__file__),'market_cache.sqlite3')
+    result_path=os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3')
+    def ro(path):
+        return sqlite3.connect('file:'+os.path.abspath(path).replace('\\','/')+'?mode=ro', uri=True)
+    bars=[]; signals=[]
+    if os.path.exists(cache_path):
+        c=ro(cache_path)
+        try:
+            rows=c.execute('SELECT ts_code,trade_date,open,high,low,close,vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT 240',(ts_code,)).fetchall()
+            bars=[dict(zip(('ts_code','trade_date','open','high','low','close','vol','amount'),x)) for x in reversed(rows)]
+        except sqlite3.Error: bars=[]
+        finally: c.close()
+    if os.path.exists(result_path):
+        c=ro(result_path)
+        try:
+            row=c.execute('SELECT id FROM scans WHERE valid=1 ORDER BY id DESC LIMIT 1').fetchone()
+            if row:
+                for x in c.execute('SELECT rule_id,state,signal_date,event_id,evidence FROM signals WHERE scan_id=? AND ts_code=? ORDER BY signal_date,rule_id',(row[0],ts_code)):
+                    signals.append({'rule_id':x[0],'state':x[1],'signal_date':x[2],'event_id':x[3],'evidence':json.loads(x[4])})
+        except (sqlite3.Error,ValueError): signals=[]
+        finally: c.close()
+    if not bars and not signals: abort(404)
+    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars,signals=signals)
+
 @app.get('/strategy/a/v4/results')
 def strategy_a_v4_results():
     from flask import request
