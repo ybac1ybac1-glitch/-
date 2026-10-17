@@ -39,3 +39,12 @@ def test_audit_invalid_ohlc_and_count_mismatch(tmp_path):
     c=sqlite3.connect(m); c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)"); c.execute("insert into daily values('600001.SH','20250103',10,8,9,10,100,100)"); c.commit();c.close()
     c=sqlite3.connect(p); c.execute("update scans set signal_count=2"); c.commit(); c.close()
     r=audit(str(p),str(m)); assert r["mismatches"] and r["data_checks"]["abnormal"]==1 and r["suspicious"]
+
+def test_legacy_daily_without_amount_is_not_missing_ohlcv(tmp_path):
+    p=tmp_path/"r.sqlite3"; m=tmp_path/"m.sqlite3"; make_result(p,[("600001.SH","A01","WATCH","20250103","","{\"valid\":false,\"support\":10,\"resistance\":12,\"width\":.2,\"slope\":0,\"valid_sessions\":80}")])
+    c=sqlite3.connect(m); c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real)"); c.execute("insert into daily values('600001.SH','20250103',10,11,9,10.5,100)"); c.commit(); c.close()
+    r=audit(str(p),str(m)); assert r["data_checks"]["amount_status"]=="数据库未提供 amount 字段"; assert r["data_checks"]["abnormal"]==0
+
+def test_persisted_evidence_gap_is_reported_separately(tmp_path):
+    p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1","{\"event_id\":\"e1\"}")])
+    r=audit(str(p)); assert any("持久化证据不足" in x for x in r["untraceable"][0]["reasons"]); assert "strategy_fields" in r["persistence_audit"]
