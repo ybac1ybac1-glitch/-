@@ -35,3 +35,25 @@ def test_waiting_boundary_uses_business_days():
     x=frame(40); days=list(x.trade_date)
     # The audit consumes actual trading dates, so weekend gaps do not add waiting sessions.
     assert (days[5]-days[4]).days in (1,3)
+
+def test_audit_frame_detects_future_pollution(monkeypatch):
+    import history_replay_audit as h
+    from types import SimpleNamespace
+    x=frame(4); calls={"n":0}
+    def fake_scan(symbol,asof,df):
+        calls["n"]+=1; value=1 if calls["n"]%3 else 2
+        return [SimpleNamespace(rule_id="A01",state="CANDIDATE",signal_date=asof,evidence={"event_id":"e","event_date":asof,"metric":value})]
+    monkeypatch.setattr(h,"scan",fake_scan); monkeypatch.setattr(h,"replay_events",lambda *a,**k:[])
+    r=h.audit_frame("600001.SH",x)
+    assert r["status"]=="FAIL" and r["future_leakage_count"]>0 and r["cases"]
+
+def test_audit_frame_detects_frozen_change(monkeypatch):
+    import history_replay_audit as h
+    from types import SimpleNamespace
+    x=frame(4)
+    monkeypatch.setattr(h,"scan",lambda symbol,asof,df:[SimpleNamespace(rule_id="A01",state="WATCH",signal_date=asof,evidence={})])
+    def events(symbol,df,asof):
+        return [{"event_id":"A-E","event_date":"2025-01-01","event_type":"SPRING","frozen_support":10 if len(df)%2 else 11,"frozen_resistance":12,"frozen_volume_baseline":100,"current_state":"CANDIDATE","transition_history":[{"date":"2025-01-01","from":None,"to":"CANDIDATE"}]}]
+    monkeypatch.setattr(h,"replay_events",events)
+    r=h.audit_frame("600001.SH",x)
+    assert r["status"]=="FAIL" and r["frozen_evidence_anomalies"]>0
