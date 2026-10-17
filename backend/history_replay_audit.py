@@ -59,13 +59,12 @@ def audit_frame(symbol,frame,dates=None):
         if [_record(e) for e in scan(symbol,asof,prefix)]!=ra:
             r["repeatability_anomalies"]+=1;r["cases"].append({"type":"non_repeatable_scan","symbol":symbol,"date":asof})
         events=replay_events(symbol,prefix,asof)
+        issues=_state_checks(events);r["state_transition_anomalies"]+=len(issues);r["cases"].extend([{"symbol":symbol,"date":asof,**i} for i in issues])
         for ev in events:
             rule="A03" if ev.get("event_type")=="SPRING" else "A05"
-            r["coverage"][rule]["capabilities"]["state_transition_legality"]={"status":"PASS" if not issues else "FAIL","checks":r["coverage"][rule]["capabilities"].get("state_transition_legality",{}).get("checks",0)+1,"reason":"事件状态机已执行"}
-            if ev.get("event_type")=="SPRING" and ev.get("current_state") in {"TEST_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A04"]["capabilities"]["state_transition_legality"]={"status":"PASS","checks":1,"reason":"Spring状态转换已执行"}
-            if ev.get("event_type")=="SOS" and ev.get("current_state") in {"LPS_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A06"]["capabilities"]["state_transition_legality"]={"status":"PASS","checks":1,"reason":"SOS状态转换已执行"}
-        issues=_state_checks(events);r["state_transition_anomalies"]+=len(issues);r["cases"].extend([{"symbol":symbol,"date":asof,**i} for i in issues])
-        ids={}
+            if ev.get("event_type") in {"SPRING","SOS"}: r["coverage"][rule]["capabilities"]["state_transition_legality"]={"status":"PASS" if not issues else "FAIL","checks":r["coverage"][rule]["capabilities"].get("state_transition_legality",{}).get("checks",0)+1,"reason":"事件状态机已执行"}
+            if ev.get("event_type")=="SPRING" and ev.get("current_state") in {"TEST_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A04"]["capabilities"]["state_transition_legality"]={"status":"PASS" if not issues else "FAIL","checks":1,"reason":"Spring状态转换已执行"}
+            if ev.get("event_type")=="SOS" and ev.get("current_state") in {"LPS_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A06"]["capabilities"]["state_transition_legality"]={"status":"PASS" if not issues else "FAIL","checks":1,"reason":"SOS状态转换已执行"}
         for e in events:
             if str(e.get("event_date",""))>asof or any(str(h.get("date",""))>asof for h in e.get("transition_history",[])):
                 r["future_leakage_count"]+=1;r["cases"].append({"type":"future_event_transition","symbol":symbol,"date":asof,"event_id":e.get("event_id")})
