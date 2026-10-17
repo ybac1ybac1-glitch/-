@@ -147,6 +147,8 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
             if code in cached:
                 result = cached[code]["result"]
                 elapsed = float(cached[code].get("elapsed_seconds", 0.0))
+                prep_elapsed = float(cached[code].get("data_preparation_seconds", 0.0))
+                audit_elapsed = float(cached[code].get("audit_frame_seconds", 0.0))
                 if progress:
                     _progress(f"[{position}/{len(requested)}] {code} 已从检查点恢复，已完成 {len(entries)}")
             else:
