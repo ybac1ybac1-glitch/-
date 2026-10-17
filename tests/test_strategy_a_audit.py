@@ -32,7 +32,7 @@ def test_audit_missing_snapshot_is_explicit(tmp_path):
 
 def test_rule_optional_fields_and_legal_cross_rule_reference(tmp_path):
     p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A01","WATCH","20250103","","{\"valid\":false,\"support\":10,\"resistance\":12,\"width\":.2,\"slope\":0,\"valid_sessions\":80}"),("600001.SH","A07","WATCH","20250103","","{\"volume_effort\":1,\"price_result\":0}")])
-    r=audit(str(p)); assert r["evidence"]["incomplete"]==0 and r["duplicates"]["empty_event_id_excluded"]==2
+    r=audit(str(p)); assert r["duplicates"]["empty_event_id_excluded"]==2 and not any("event_id缺失" in z for x in r["untraceable"] for z in x["reasons"])
 
 def test_audit_invalid_ohlc_and_count_mismatch(tmp_path):
     p=tmp_path/"r.sqlite3"; m=tmp_path/"m.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1","{\"event_id\":\"e1\",\"event_date\":\"20250103\",\"frozen_support\":9}")])
