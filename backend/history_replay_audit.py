@@ -45,7 +45,7 @@ def _state_checks(events):
 def audit_frame(symbol,frame,dates=None):
     x=frame.copy();x["trade_date"]=pd.to_datetime(x["trade_date"]);x=x.sort_values("trade_date").drop_duplicates("trade_date")
     days=sorted(x.trade_date.dt.normalize().unique());targets=days if dates is None else [pd.to_datetime(d).normalize() for d in dates]
-    r={"status":"PASS","symbol_count":1,"trading_days_checked":0,"signals_checked":0,"future_leakage_count":0,"state_transition_anomalies":0,"frozen_evidence_anomalies":0,"repeatability_anomalies":0,"evidence_differences":0,"cases":[],"coverage":{f"A{i:02d}":{"status":"UNVERIFIED","days":0,"signals":0} for i in range(1,10)},"unverified":["没有逐日历史结果快照，无法证明持久化结果与重放逐项相等","停牌、涨跌停、复权和分钟数据不在日线输入中"]}
+    r={"status":"PASS","symbol_count":1,"trading_days_checked":0,"signals_checked":0,"future_leakage_count":0,"state_transition_anomalies":0,"frozen_evidence_anomalies":0,"repeatability_anomalies":0,"evidence_differences":0,"cases":[],"coverage":{f"A{i:02d}":{"status":"UNVERIFIED","days":0,"signals":0,"capabilities":{"historical_truncation":{"status":"UNVERIFIED","checks":0,"reason":"尚未执行"},"evidence_consistency":{"status":"UNVERIFIED","checks":0,"reason":"尚未执行"},"state_transition_legality":{"status":"UNVERIFIED","checks":0,"reason":"未触发对应事件"},"frozen_evidence_stability":{"status":"UNVERIFIED","checks":0,"reason":"未触发冻结事件"},"waiting_15_sessions":{"status":"UNVERIFIED","checks":0,"reason":"未真实触发第14/15/16个交易日状态"},"persisted_snapshot_consistency":{"status":"UNVERIFIED","checks":0,"reason":"没有逐日持久化快照"}}} for i in range(1,10)},"unverified":["没有逐日历史结果快照，无法证明持久化结果与重放逐项相等","停牌、涨跌停、复权和分钟数据不在日线输入中"]}
     freeze_history={}
     for d in targets:
         prefix=x[x.trade_date<=d]
@@ -61,9 +61,9 @@ def audit_frame(symbol,frame,dates=None):
         events=replay_events(symbol,prefix,asof)
         for ev in events:
             rule="A03" if ev.get("event_type")=="SPRING" else "A05"
-            r["coverage"][rule]["status"]="PASS"
-            if ev.get("current_state") in {"TEST_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A04"]["status"]="PASS"
-            if ev.get("current_state") in {"LPS_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A06"]["status"]="PASS"
+            r["coverage"][rule]["capabilities"]["state_transition_legality"]={"status":"PASS" if not issues else "FAIL","checks":r["coverage"][rule]["capabilities"].get("state_transition_legality",{}).get("checks",0)+1,"reason":"事件状态机已执行"}
+            if ev.get("event_type")=="SPRING" and ev.get("current_state") in {"TEST_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A04"]["capabilities"]["state_transition_legality"]={"status":"PASS","checks":1,"reason":"Spring状态转换已执行"}
+            if ev.get("event_type")=="SOS" and ev.get("current_state") in {"LPS_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A06"]["capabilities"]["state_transition_legality"]={"status":"PASS","checks":1,"reason":"SOS状态转换已执行"}
         issues=_state_checks(events);r["state_transition_anomalies"]+=len(issues);r["cases"].extend([{"symbol":symbol,"date":asof,**i} for i in issues])
         ids={}
         for e in events:
@@ -72,7 +72,10 @@ def audit_frame(symbol,frame,dates=None):
             key=e.get("event_id")
             frozen=(e.get("event_date"),e.get("frozen_support"),e.get("frozen_resistance"),e.get("frozen_volume_baseline"))
             if key and key in freeze_history and freeze_history[key]!=frozen:r["frozen_evidence_anomalies"]+=1;r["cases"].append({"type":"frozen_evidence_changed","event_id":key,"before":freeze_history[key],"after":frozen})
-            if key:freeze_history[key]=frozen
+            if key:
+                freeze_history[key]=frozen
+                rule=("A03" if str(key).find(":A03:")>=0 else "A05" if str(key).find(":A05:")>=0 else None)
+                if rule: r["coverage"][rule]["capabilities"]["frozen_evidence_stability"]={"status":"PASS","checks":r["coverage"][rule]["capabilities"].get("frozen_evidence_stability",{}).get("checks",0)+1,"reason":"冻结事件跨日期稳定"}
     for rule in ("A03","A04","A05","A06"):
         if r["coverage"][rule]["status"]=="UNVERIFIED": r["unverified"].append(rule+"未触发对应事件或等待状态，无法证明完整状态机")
     if any(r[k] for k in ("future_leakage_count","state_transition_anomalies","frozen_evidence_anomalies","repeatability_anomalies")):r["status"]="FAIL"
