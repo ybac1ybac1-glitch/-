@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>策略 A · {{ ts_code }}</title>
+<style>body{font-family:Arial;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px}.card{background:#f4f6f8;padding:12px;margin:12px 0}.warn{color:#a65b00}</style>
+<h1>策略 A · 股票详情 {{ ts_code }}</h1>
+<p><a href="/strategy/a/v4">返回策略 A 复盘</a></p>
+<div class="card">数据来源：本地 market_cache.sqlite3，只读；本页不调用在线接口，不重新计算策略。</div>
+<h2>策略事件与证据</h2>
+{% if signals %}<table><tr><th>规则</th><th>状态</th><th>事件日期</th><th>事件 ID</th><th>冻结证据</th></tr>{% for x in signals %}<tr><td>{{ x.rule_id }}</td><td>{{ x.state }}</td><td>{{ x.signal_date }}</td><td>{{ x.event_id }}</td><td><pre>{{ x.evidence | tojson(indent=2) }}</pre></td></tr>{% endfor %}</table>{% else %}<p>当前没有已保存的策略 A 信号。</p>{% endif %}
+<h2>真实日 K 线与成交量</h2>
+{% if bars %}<table><tr><th>交易日</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>成交量</th><th>成交额</th></tr>{% for x in bars[-120:]|reverse %}<tr><td>{{ x.trade_date }}</td><td>{{ x.open }}</td><td>{{ x.high }}</td><td>{{ x.low }}</td><td>{{ x.close }}</td><td>{{ x.vol }}</td><td>{{ x.amount }}</td></tr>{% endfor %}</table>{% else %}<p class="warn">本地数据库没有该股票的日线数据。</p>{% endif %}
