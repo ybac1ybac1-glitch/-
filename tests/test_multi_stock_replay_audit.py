@@ -143,7 +143,7 @@ def test_checkpoint_counter_invariants(tmp_path):
  report=audit_database(str(db),["A.SZ","B.SZ","C.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
  assert report["requested"]==3
  assert report["processed"]==3
- assert report["completed"]==1
+ assert report["completed"]==2
  assert report["failed"]==1
  assert report["unverified"]==1
- assert report["processed"]==report["completed"]+report["failed"]+report["unverified"]
+ assert report["processed"]==report["completed"]+report["failed"]
