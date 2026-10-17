@@ -8,8 +8,23 @@ from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
 from validation import validate_cache,start as start_validation,status as validation_status,get_results
 from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results
-import os, sqlite3, json
+import os, sqlite3, json, math
 app=Flask(__name__)
+
+def _clean_value(value):
+    try:
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            return None
+        if hasattr(value, "item"):
+            value = value.item()
+            if isinstance(value, float) and math.isnan(value):
+                return None
+    except Exception:
+        return None
+    return value
+
+def _clean_rows(rows):
+    return [{k: _clean_value(v) for k, v in row.items()} for row in rows]
 
 def _p1rows(strategy=None):
     c=sqlite3.connect(__import__('data').DB_PATH)
@@ -18,7 +33,7 @@ def _p1rows(strategy=None):
 @app.route('/')
 def index():
     df,error=get_stock_data(); market=assess(daily=df) if not df.empty else {'state':'无法判断','factor':0,'trend':0,'breadth':0,'amount_change':0,'reason':'市场环境数据缺失'}
-    stocks=filter_stock(df,market,history_loader=lambda code:get_history(code)).to_dict('records') if not df.empty else []
+    stocks=_clean_rows(filter_stock(df,market,history_loader=lambda code:get_history(code)).to_dict('records')) if not df.empty else []
     return render_template('index.html',stocks=stocks,priority_stocks=[x for x in stocks if x.get('priority')==1],market=market,error=error,stats=status())
 @app.post('/admin/history-extend')
 def history_extend(): return jsonify(start_history_extend(360))
@@ -78,9 +93,25 @@ def data_health():
 def stock_detail(ts_code):
     stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
     if hit.empty: abort(404)
-    info=hit.iloc[0].to_dict(); frames={'daily':get_history(ts_code,'daily'),'weekly':get_history(ts_code,'weekly'),'monthly':get_history(ts_code,'monthly')}
-    from wyckoff import analyze
-    return render_template('detail.html',stock=info,analysis=analyze(frames['daily']),frames={k:v.tail(120).to_dict('records') for k,v in frames.items()},ann=ann_analyze(fetch_ann(ts_code,pro)),news=news_analyze(fetch_news(ts_code,pro)),error='')
+    info={k:_clean_value(v) for k,v in hit.iloc[0].to_dict().items()}
+    frames={}; errors=[]
+    for kind in ('daily','weekly','monthly'):
+        try: frames[kind]=get_history(ts_code,kind)
+        except Exception as exc:
+            frames[kind]=__import__('pandas').DataFrame(); errors.append(f'{kind}: {exc}')
+    try:
+        from wyckoff import analyze
+        analysis=analyze(frames['daily'])
+    except Exception as exc:
+        analysis={'stage':'数据不足','score':None,'reason':'无法生成分析：'+str(exc)}
+    try: ann=ann_analyze(fetch_ann(ts_code,pro))
+    except Exception: ann={'sentiment':'数据不足','score':None,'items':[]}
+    try: news=news_analyze(fetch_news(ts_code,pro))
+    except Exception: news={'sentiment':'数据不足','score':None,'items':[]}
+    return render_template('detail.html',stock=info,analysis=analysis,
+        frames={k:_clean_rows(v.tail(120).to_dict('records')) for k,v in frames.items()},
+        ann=ann,news=news,error='；'.join(errors) if errors else '')
+
 @app.get('/strategy/a/v4')
 def strategy_a_v4():
     path=os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3')
