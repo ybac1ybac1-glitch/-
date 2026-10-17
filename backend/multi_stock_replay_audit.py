@@ -16,7 +16,7 @@ def _results_meta(path):
  if not path:return {"status":"UNVERIFIED","reason":"未提供results-db，无法比较历史持久化快照"}
  c=None
  try:
-  c=_ro(path);tables={r[0] for r in c.execute("select name from sqlite_master where type='table')}
+  tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
   if "scans" not in tables or "signals" not in tables:return {"status":"UNVERIFIED","reason":"结果库缺少可识别的scans/signals表"}
   row=c.execute("select id,asof_date,signal_count,partial from scans where valid=1 order by id desc limit 1").fetchone()
   if not row:return {"status":"UNVERIFIED","reason":"结果库没有有效快照"}
@@ -30,7 +30,7 @@ def audit_database(path,stocks,asof=None,results_db=None):
  try:
   try:c=_ro(path)
   except Exception as e:out.update(status="UNVERIFIED",error=str(e));return out
-  tables={r[0] for r in c.execute("select name from sqlite_master where type='table')")}
+  tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
   if "daily" not in tables:out.update(status="UNVERIFIED",error="daily表不存在");return out
   cutoff=_date(asof) if asof else None
   for code in stocks:
