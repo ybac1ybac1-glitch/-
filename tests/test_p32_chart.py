@@ -33,5 +33,6 @@ def test_chart_template_javascript_parses():
     with tempfile.NamedTemporaryFile("w",suffix=".js",encoding="utf-8",delete=False) as f:
         f.write(script); name=f.name
     try:
-        result=subprocess.run([node,"--check",name],capture_output=True,text=True)\n        assert result.returncode==0, result.stderr
+        result=subprocess.run([node,"--check",name],capture_output=True,text=True)
+        assert result.returncode==0, result.stderr
     finally: Path(name).unlink(missing_ok=True)
