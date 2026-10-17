@@ -71,7 +71,11 @@ def _database_identity(path, stocks=()):
         connection = _ro(absolute)
         schema = connection.execute("pragma schema_version").fetchone()[0]
         journal = connection.execute("pragma journal_mode").fetchone()[0]
-        aggregates = []\n        for symbol in stocks:\n            row = connection.execute("select count(*), max(rowid), max(trade_date), sum(coalesce(close,0)), sum(coalesce(vol,0)) from daily where ts_code=?", (symbol,)).fetchone()\n            aggregates.append([symbol, list(row) if row else None])\n        return {"size":stat.st_size,"mtime_ns":stat.st_mtime_ns,"schema_version":schema,"journal_mode":journal,"stock_aggregates":aggregates}
+        aggregates = []
+        for symbol in stocks:
+            row = connection.execute("select count(*), max(rowid), max(trade_date), sum(coalesce(close,0)), sum(coalesce(vol,0)) from daily where ts_code=?", (symbol,)).fetchone()
+            aggregates.append([symbol, list(row) if row else None])
+        return {"size":stat.st_size,"mtime_ns":stat.st_mtime_ns,"schema_version":schema,"journal_mode":journal,"stock_aggregates":aggregates}
     finally:
         if connection is not None:
             connection.close()
