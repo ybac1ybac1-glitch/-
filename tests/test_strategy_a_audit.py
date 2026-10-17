@@ -29,3 +29,12 @@ def test_audit_market_traceability_and_read_only(tmp_path):
 
 def test_audit_missing_snapshot_is_explicit(tmp_path):
     r=audit(str(tmp_path/"missing.sqlite3")); assert r["status"]=="RESULT_DB_MISSING"
+
+def test_rule_optional_fields_and_legal_cross_rule_reference(tmp_path):
+    p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A01","WATCH","20250103","","{\"valid\":false,\"support\":10,\"resistance\":12,\"width\":.2,\"slope\":0,\"valid_sessions\":80}"),("600001.SH","A07","WATCH","20250103","","{\"volume_effort\":1,\"price_result\":0}")])
+    r=audit(str(p)); assert r["evidence"]["incomplete"]==0 and r["duplicates"]["empty_event_id_excluded"]==2
+
+def test_audit_invalid_ohlc_and_count_mismatch(tmp_path):
+    p=tmp_path/"r.sqlite3"; m=tmp_path/"m.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1","{\"event_id\":\"e1\",\"event_date\":\"20250103\",\"frozen_support\":9}")])
+    c=sqlite3.connect(m); c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)"); c.execute("insert into daily values('600001.SH','20250103',10,8,9,10,100,100)"); c.commit();c.close()
+    r=audit(str(p),str(m)); assert r["mismatches"] and r["data_checks"]["abnormal"]==1 and r["suspicious"]
