@@ -18,7 +18,7 @@ def _results_meta(path):
   if "scans" not in tables or "signals" not in tables:return {"status":"UNVERIFIED","reason":"结果库缺少可识别的scans/signals表"}
   cols={r[1] for r in c.execute("pragma table_info(scans)")}
   required={"id","asof_date","signal_count","partial","valid"}
-  if not required<=cols:return {"status":"UNVERIFIED","reason":"scans字段不兼容"}
+  if not required<=cols:return {"status":"UNVERIFIED","reason":"scans字段缺失:"+",".join(sorted(required-cols))}
   row=c.execute("select id,asof_date,signal_count,partial from scans where valid=1 order by id desc limit 1").fetchone()
   if not row:return {"status":"UNVERIFIED","reason":"结果库没有有效快照"}
   return {"status":"UNVERIFIED","reason":"结果库是扫描快照而非逐日历史快照，不能直接证明逐日一致","scan_id":row[0],"asof_date":str(row[1]),"signal_count":row[2],"partial":bool(row[3])}
