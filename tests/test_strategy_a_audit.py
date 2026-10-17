@@ -14,7 +14,7 @@ def test_audit_counts_states_and_evidence(tmp_path):
     r=audit(str(p)); assert r["actual_signal_rows"]==3 and r["state_summary"]=={"candidate":2,"confirmed":1,"invalidated":0}; assert r["duplicates"]["exact_signal_rows"]==1
 
 def test_audit_flags_missing_and_invalid_evidence(tmp_path):
-    p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A04","CANDIDATE","20250103","","{"frozen_support":0}")])
+    p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A04","CANDIDATE","20250103","","{\"frozen_support\":0}")])
     r=audit(str(p)); assert r["evidence"]["incomplete"]==1 and r["untraceable"][0]["event_id"]==""
 
 def test_audit_market_traceability_and_read_only(tmp_path):
