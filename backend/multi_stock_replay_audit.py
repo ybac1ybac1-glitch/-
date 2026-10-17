@@ -138,38 +138,69 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
             out.update(status="UNVERIFIED",error="asof格式或日期无效，必须为YYYYMMDD或YYYY-MM-DD"); return out
         if progress: _progress(f"进入逐日重放阶段，共 {len(requested)} 只股票")
         entries=list(completed_entries)
-        for position, code in enumerate(requested,start=1):
+        for position, code in enumerate(requested, start=1):
+            execution_error = False
             if code in cached:
-                result=cached[code]["result"]; elapsed=float(cached[code].get("elapsed_seconds",0.0))
-                if progress: _progress(f"[{position}/{len(requested)}] {code} 已从检查点恢复，已完成 {len(entries)}")
+                result = cached[code]["result"]
+                elapsed = float(cached[code].get("elapsed_seconds", 0.0))
+                if progress:
+                    _progress(f"[{position}/{len(requested)}] {code} 已从检查点恢复，已完成 {len(entries)}")
             else:
-                one_started=time.perf_counter()
-                if progress: _progress(f"[{position}/{len(requested)}] 开始 {code}，已完成 {len(entries)}")
+                one_started = time.perf_counter()
+                if progress:
+                    _progress(f"[{position}/{len(requested)}] 开始 {code}，已完成 {len(entries)}")
                 try:
-                    frame=pd.read_sql_query("select * from daily where ts_code=? order by trade_date",connection,params=[code])
+                    frame = pd.read_sql_query(
+                        "select * from daily where ts_code=? order by trade_date",
+                        connection, params=[code],
+                    )
                     if frame.empty:
-                        result={"symbol":code,"status":"UNVERIFIED","reason":"无行情数据"}
+                        result = {"symbol": code, "status": "UNVERIFIED", "reason": "无行情数据"}
                     else:
-                        parsed=pd.to_datetime(frame["trade_date"].astype(str),errors="coerce")
-                        use=frame if cutoff is None else frame.loc[parsed<=cutoff]
-                        if use.empty: result={"symbol":code,"status":"UNVERIFIED","reason":"截止日期早于该股票最早交易日"}
+                        parsed = pd.to_datetime(frame["trade_date"].astype(str), errors="coerce")
+                        use = frame if cutoff is None else frame.loc[parsed <= cutoff]
+                        if use.empty:
+                            result = {"symbol": code, "status": "UNVERIFIED", "reason": "截止日期早于该股票最早交易日"}
                         else:
-                            actual=pd.to_datetime(use["trade_date"].astype(str),errors="coerce").max().normalize()
-                            result=dict(evaluator(code,use,None)); result["actual_asof"]=actual.strftime("%Y-%m-%d")
-                    elapsed=time.perf_counter()-one_started
+                            actual = pd.to_datetime(use["trade_date"].astype(str), errors="coerce").max().normalize()
+                            result = dict(evaluator(code, use, None))
+                            result["actual_asof"] = actual.strftime("%Y-%m-%d")
+                    elapsed = time.perf_counter() - one_started
                 except KeyboardInterrupt:
-                    save_checkpoint(entries,interrupted=True); _progress(f"收到中断，已保存 {len(entries)} 只股票的检查点"); raise
+                    save_checkpoint(entries, interrupted=True)
+                    _progress(f"收到中断，已保存 {len(entries)} 只股票的检查点")
+                    raise
                 except Exception as exc:
-                    elapsed=time.perf_counter()-one_started; result={"symbol":code,"status":"UNVERIFIED","reason":"审计失败: "+str(exc)}; out["failed"]+=1; out["stocks_failed"]+=1
-                entry={"symbol":code,"result":result,"elapsed_seconds":elapsed}; entries.append(entry); cached[code]=entry; save_checkpoint(entries)
-                if progress: _progress(f"[{position}/{len(requested)}] 完成 {code}，已完成 {len(entries)}，耗时 {elapsed:.2f}s，{result.get('status','UNVERIFIED')}")
-            out["timing"]["per_stock"][code]=elapsed; out["results"].append(result); out["processed"]+=1
-            status=result.get("status","UNVERIFIED"); out["summary"].setdefault(status,0); out["summary"][status]+=1
-            if status=="UNVERIFIED": out["unverified"]+=1
-            elif status=="FAIL": out["status"]="FAIL"
-            else: out["completed"]+=1; out["stocks_audited"]+=1
-            actual=result.get("actual_asof")
-            if actual and (out["actual_asof"] is None or actual>out["actual_asof"]): out["actual_asof"]=actual
+                    elapsed = time.perf_counter() - one_started
+                    execution_error = True
+                    result = {"symbol": code, "status": "UNVERIFIED", "reason": "审计执行异常: " + str(exc)}
+                    out["failed"] += 1
+                    out["stocks_failed"] += 1
+                if not execution_error:
+                    entry = {"symbol": code, "result": result, "elapsed_seconds": elapsed}
+                    entries.append(entry)
+                    cached[code] = entry
+                    save_checkpoint(entries)
+                if progress:
+                    state = "异常" if execution_error else result.get("status", "UNVERIFIED")
+                    _progress(f"[{position}/{len(requested)}] 完成 {code}，已完成 {len(entries)}，耗时 {elapsed:.2f}s，{state}")
+            out["timing"]["per_stock"][code] = elapsed
+            out["results"].append(result)
+            out["processed"] += 1
+            status = result.get("status", "UNVERIFIED")
+            if execution_error:
+                continue
+            out["completed"] += 1
+            out["summary"].setdefault(status, 0)
+            out["summary"][status] += 1
+            if status == "UNVERIFIED":
+                out["unverified"] += 1
+            elif status == "FAIL":
+                out["status"] = "FAIL"
+            out["stocks_audited"] += 1
+            actual = result.get("actual_asof")
+            if actual and (out["actual_asof"] is None or actual > out["actual_asof"]):
+                out["actual_asof"] = actual
         if out["summary"].get("FAIL",0): out["status"]="FAIL"
         elif out["failed"] or out["unverified"]: out["status"]="UNVERIFIED"
         out["timing"]["elapsed_seconds"]=time.perf_counter()-started; out["checkpoint"]["status"]="COMPLETE"; return out
