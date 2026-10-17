@@ -103,7 +103,11 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
     def save_checkpoint(entries, interrupted=False):
         if checkpoint: _atomic_json(checkpoint,_checkpoint_payload(fingerprint,entries,interrupted))
     try:
-        connection=_ro(path)
+        try:
+            connection = _ro(path)
+        except Exception as exc:
+            out.update(status="UNVERIFIED", error="行情库不可读: " + str(exc))
+            return out
         tables={r[0] for r in connection.execute("select name from sqlite_master where type='table'")}
         if "daily" not in tables:
             out.update(status="UNVERIFIED",error="daily表不存在"); return out
