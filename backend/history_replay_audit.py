@@ -57,7 +57,7 @@ def audit_frame(symbol,frame,dates=None):
             r["future_leakage_count"]+=1;r["evidence_differences"]+=1;r["cases"].append({"type":"future_truncation_difference","symbol":symbol,"date":asof,"changes":_diff({"records":ra},{"records":rb})})
         if [_record(e) for e in scan(symbol,asof,prefix)]!=ra:
             r["repeatability_anomalies"]+=1;r["cases"].append({"type":"non_repeatable_scan","symbol":symbol,"date":asof})
-        events=replay_events(symbol,prefix,asof);issues=_state_checks(events);r["state_transition_anomalies"]+=len(issues);r["cases"].extend([{"symbol":symbol,"date":asof,**i} for i in issues])
+        events=replay_events(symbol,prefix,asof)\n        for ev in events:\n            rule="A03" if ev.get("event_type")=="SPRING" else "A05"\n            r["coverage"][rule]["status"]="PASS"\n            if ev.get("current_state") in {"TEST_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A04"]["status"]="PASS"\n            if ev.get("current_state") in {"LPS_CANDIDATE","INVALIDATED","EXPIRED"}: r["coverage"]["A06"]["status"]="PASS"\n        issues=_state_checks(events);r["state_transition_anomalies"]+=len(issues);r["cases"].extend([{"symbol":symbol,"date":asof,**i} for i in issues])
         ids={}
         for e in events:
             if str(e.get("event_date",""))>asof or any(str(h.get("date",""))>asof for h in e.get("transition_history",[])):
@@ -66,7 +66,7 @@ def audit_frame(symbol,frame,dates=None):
             frozen=(e.get("event_date"),e.get("frozen_support"),e.get("frozen_resistance"),e.get("frozen_volume_baseline"))
             if key and key in ids and ids[key]!=frozen:r["frozen_evidence_anomalies"]+=1;r["cases"].append({"type":"frozen_evidence_changed","event_id":key,"before":ids[key],"after":frozen})
             if key:ids[key]=frozen
-    if any(r[k] for k in ("future_leakage_count","state_transition_anomalies","frozen_evidence_anomalies","repeatability_anomalies")):r["status"]="FAIL"
+    for rule in ("A03","A04","A05","A06"):\n        if r["coverage"][rule]["status"]=="UNVERIFIED": r["unverified"].append(rule+"未触发对应事件或等待状态，无法证明完整状态机")\n    if any(r[k] for k in ("future_leakage_count","state_transition_anomalies","frozen_evidence_anomalies","repeatability_anomalies")):r["status"]="FAIL"
     return r
 
 def audit(symbol,frame,dates=None): return audit_frame(symbol,frame,dates)
