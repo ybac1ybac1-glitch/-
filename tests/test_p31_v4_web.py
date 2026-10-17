@@ -29,7 +29,7 @@ def test_v4_results_filters_and_paging(monkeypatch):
     monkeypatch.setattr(appmod,"a_web_results",fake)
     c=appmod.app.test_client()
     r=c.get("/strategy/a/v4/results?page=2&page_size=1&rule_id=A03&state=CANDIDATE&code=600")
-    assert r.status_code==200 and r.get_json()["page"]==2 and calls[-1][4:]==("A03","CANDIDATE","600")
+    assert r.status_code==200 and r.get_json()["page"]==2 and calls[-1][3:]==("A03","CANDIDATE","600")
 
 def test_v4_detail_reads_local_sqlite_only(tmp_path,monkeypatch):
     cache=tmp_path/"market_cache.sqlite3"; result=tmp_path/"strategy_a_results.sqlite3"
