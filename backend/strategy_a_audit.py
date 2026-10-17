@@ -44,7 +44,7 @@ def _market_check(c,code,date):
     return None,row
 
 def audit(results_path,market_path=None):
-    out={"status":"NO_SNAPSHOT","read_only":True,"rule_requirements":{r:{"required":list(v),"optional":list(RULE_NOT_REQUIRED.get(r,()))} for r,v in RULE_REQUIREMENTS.items()},"rules":{r:{"total":0,"states":{}} for r in RULE_REQUIREMENTS},"state_summary":{"candidate":0,"confirmed":0,"invalidated":0,"watch":0},"evidence":{"complete":0,"incomplete":0,"missing_reasons":{}},"duplicates":{"exact_records":0,"same_event_state_changes":[],"cross_rule_event_references":[],"empty_event_id_excluded":0},"mismatches":[],"untraceable":[],"suspicious":[],"data_checks":{"checked":0,"abnormal":0}}
+    out={"status":"NO_SNAPSHOT","read_only":True,"rule_requirements":{r:{"required":list(v),"optional":list(RULE_NOT_REQUIRED.get(r,()))} for r,v in RULE_REQUIREMENTS.items()},"rules":{r:{"total":0,"states":{}} for r in RULE_REQUIREMENTS},"state_summary":{"candidate":0,"confirmed":0,"invalidated":0,"watch":0},"evidence":{"complete":0,"incomplete":0,"missing_reasons":{}},"duplicates":{"exact_records":0,"same_event_state_changes":[],"cross_rule_event_references":[],"empty_event_id_excluded":0},"mismatches":[],"untraceable":[],"suspicious":[],"data_checks":{"checked":0,"abnormal":0,"market_rows_checked":0}}
     rc=mc=None
     try:
         if not os.path.exists(results_path):out["status"]="RESULT_DB_MISSING";return out
@@ -59,7 +59,7 @@ def audit(results_path,market_path=None):
         exact=Counter(); event_states=defaultdict(set); cross=defaultdict(set)
         for code,rule,state,date,event_id,raw in rows:
             ev=_json(raw); meta=out["rules"].setdefault(rule,{"total":0,"states":{}});meta["total"]+=1;meta["states"][state]=meta["states"].get(state,0)+1
-            if state in out["state_summary"]:out["state_summary"][state]+=1
+            if state.lower() in out["state_summary"]:out["state_summary"][state.lower()]+=1
             reasons=[]; required=RULE_REQUIREMENTS.get(rule,())
             watch=state=="WATCH"
             for field in required:
@@ -70,7 +70,7 @@ def audit(results_path,market_path=None):
             for field in ("frozen_support","frozen_resistance","frozen_volume_baseline"):
                 if field in ev and ev[field] is not None and not _finite_positive(ev[field]):reasons.append(field+"非法")
             if ev.get("event_date") and date and str(ev["event_date"])>str(date):reasons.append("事件日期晚于信号日期")
-            issue,bar=_market_check(mc,code,date);out["data_checks"]["checked"]+=bool(mc)
+            issue,bar=_market_check(mc,code,date);out["data_checks"]["checked"]+=bool(mc);out["data_checks"]["market_rows_checked"]+=bool(mc)
             if issue and issue!="market_not_checked":reasons.append(issue);out["data_checks"]["abnormal"]+=1 if issue!="market_row_missing" else 0
             if reasons:
                 out["evidence"]["incomplete"]+=1
