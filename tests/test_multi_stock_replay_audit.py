@@ -147,3 +147,36 @@ def test_checkpoint_counter_invariants(tmp_path):
  assert report["failed"]==1
  assert report["unverified"]==2
  assert report["processed"]==report["completed"]+report["failed"]
+
+
+def test_phase_timings_are_nonnegative_and_sum_consistently(tmp_path):
+ db=tmp_path/"m.sqlite3"; _make_daily(db)
+ import time
+ def fake(symbol, frame, _):
+  time.sleep(0.01)
+  return {"symbol":symbol,"status":"PASS"}
+ report=audit_database(str(db),["A.SZ"],audit_fn=fake,progress=False)
+ one=report["timing"]["per_stock"]["A.SZ"]
+ assert one["total_seconds"] >= 0
+ assert one["data_preparation_seconds"] >= 0
+ assert one["audit_frame_seconds"] >= 0
+ assert one["audit_frame_seconds"] <= one["total_seconds"]
+ phases=report["timing"]["phase_totals"]
+ assert phases["data_preparation_seconds"] >= 0
+ assert phases["audit_frame_seconds"] >= one["audit_frame_seconds"]
+
+def test_windows_style_path_with_spaces_is_read_only(tmp_path):
+ db=tmp_path/"中文 folder"/"market cache.sqlite3"; db.parent.mkdir()
+ _make_daily(db)
+ before=db.stat().st_size
+ report=audit_database(str(db),["A.SZ"],progress=False,audit_fn=lambda s,f,x: {"symbol":s,"status":"PASS"})
+ assert report["completed"]==1
+ assert db.stat().st_size==before
+
+def test_real_audit_frame_resume_results_match(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ first=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,progress=False)
+ second=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,progress=False)
+ assert first["results"][0]["status"] == second["results"][0]["status"]
+ assert first["results"][0].get("trading_days_checked") == second["results"][0].get("trading_days_checked")
+ assert first["results"][0].get("signals_checked") == second["results"][0].get("signals_checked")
