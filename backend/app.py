@@ -123,7 +123,7 @@ def strategy_a_v4_stock(ts_code):
         except (sqlite3.Error,ValueError): signals=[]
         finally: c.close()
     if not bars and not signals: abort(404)
-    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars[-120:],signals=signals)
+    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars[-120:],ma_context=bars[-139:-120],signals=signals)
 
 @app.get('/strategy/a/v4/stock/<ts_code>/data')
 def strategy_a_v4_stock_data(ts_code):
@@ -136,10 +136,10 @@ def strategy_a_v4_stock_data(ts_code):
     if not os.path.exists(path): return jsonify({'error':'本地行情数据库不存在'}),404
     c=sqlite3.connect('file:'+os.path.abspath(path).replace('\\','/')+'?mode=ro',uri=True)
     try:
-        rows=c.execute('SELECT trade_date,open,high,low,close,pct_chg,vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT ?',(ts_code,days)).fetchall()
+        rows=c.execute('SELECT trade_date,open,high,low,close,pct_chg,vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT ?',(ts_code,days+19)).fetchall()
         if not rows: return jsonify({'error':'没有该股票的日线数据'}),404
-        keys=('trade_date','open','high','low','close','pct_chg','vol','amount')
-        return jsonify({'ts_code':ts_code,'days':days,'bars':[dict(zip(keys,x)) for x in reversed(rows)]})
+        keys=('trade_date','open','high','low','close','pct_chg','vol','amount'); allbars=[dict(zip(keys,x)) for x in reversed(rows)]; context=allbars[:-days]; visible=allbars[-days:]
+        return jsonify({'ts_code':ts_code,'days':days,'context':context,'bars':visible})
     finally: c.close()
 
 @app.get('/strategy/a/v4/results')
