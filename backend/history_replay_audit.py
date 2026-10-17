@@ -50,13 +50,13 @@ def _state_checks(events):
 def audit_frame(symbol,frame,dates=None):
     x=frame.copy();x["trade_date"]=x["trade_date"].map(_parse_date);x=x.sort_values("trade_date").drop_duplicates("trade_date")
     days=sorted(x.trade_date.dt.normalize().unique());targets=days if dates is None else [_parse_date(d).normalize() for d in dates]
-    r={"status":"PASS","symbol_count":1,"trading_days_checked":0,"signals_checked":0,"future_leakage_count":0,"state_transition_anomalies":0,"frozen_evidence_anomalies":0,"repeatability_anomalies":0,"evidence_differences":0,"raw_state_transition_anomalies":0,"unique_state_transition_anomalies":0,"cases":[],"coverage":{f"A{i:02d}":{"status":"UNVERIFIED","days":0,"signals":0,"capabilities":{"historical_truncation":{"status":"UNVERIFIED","checks":0,"reason":"尚未执行"},"evidence_consistency":{"status":"UNVERIFIED","checks":0,"reason":"尚未执行"},"state_transition_legality":{"status":"UNVERIFIED","checks":0,"reason":"未触发对应事件"},"frozen_evidence_stability":{"status":"UNVERIFIED","checks":0,"reason":"未触发冻结事件"},"waiting_15_sessions":{"status":"UNVERIFIED","checks":0,"reason":"未真实触发第14/15/16个交易日状态"},"persisted_snapshot_consistency":{"status":"UNVERIFIED","checks":0,"reason":"没有逐日持久化快照"}}} for i in range(1,10)},"unverified":["没有逐日历史结果快照，无法证明持久化结果与重放逐项相等","停牌、涨跌停、复权和分钟数据不在日线输入中"]}
+    r={"status":"PASS","symbol_count":1,"trading_days_checked":0,"signals_checked":0,"rule_evaluations_checked":0,"future_leakage_count":0,"state_transition_anomalies":0,"frozen_evidence_anomalies":0,"repeatability_anomalies":0,"evidence_differences":0,"raw_state_transition_anomalies":0,"unique_state_transition_anomalies":0,"cases":[],"coverage":{f"A{i:02d}":{"status":"UNVERIFIED","days":0,"signals":0,"capabilities":{"historical_truncation":{"status":"UNVERIFIED","checks":0,"reason":"尚未执行"},"evidence_consistency":{"status":"UNVERIFIED","checks":0,"reason":"尚未执行"},"state_transition_legality":{"status":"UNVERIFIED","checks":0,"reason":"未触发对应事件"},"frozen_evidence_stability":{"status":"UNVERIFIED","checks":0,"reason":"未触发冻结事件"},"waiting_15_sessions":{"status":"UNVERIFIED","checks":0,"reason":"未真实触发第14/15/16个交易日状态"},"persisted_snapshot_consistency":{"status":"UNVERIFIED","checks":0,"reason":"没有逐日持久化快照"}}} for i in range(1,10)},"unverified":["没有逐日历史结果快照，无法证明持久化结果与重放逐项相等","停牌、涨跌停、复权和分钟数据不在日线输入中"]}
     freeze_history={}
     for d in targets:
         prefix=x[x.trade_date<=d]
         if prefix.empty:continue
         asof=d.strftime("%Y%m%d");a=scan(symbol,asof,prefix);b=scan(symbol,asof,x);r["trading_days_checked"]+=1
-        ra=[_record(e) for e in a];rb=[_record(e) for e in b];r["signals_checked"]+=len(ra)
+        ra=[_record(e) for e in a];rb=[_record(e) for e in b];r["signals_checked"]+=sum(1 for e in ra if e["state"] in {"CANDIDATE","CONFIRMED","INVALIDATED"});r["rule_evaluations_checked"]+=len(ra)
         for e in ra:
             q=r["coverage"].setdefault(e["rule_id"],{"status":"UNVERIFIED","days":0,"signals":0});q["days"]+=1;q["signals"]+=1;q["status"]="PASS"
         if ra!=rb:
