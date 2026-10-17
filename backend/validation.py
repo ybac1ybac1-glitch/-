@@ -36,7 +36,7 @@ def _compact(rows):
  out=[]
  for e in rows:
   d=e.to_dict();v=d.get("evidence",{})
-  out.append({"rule_id":d["rule_id"],"state":d["state"],"signal_date":d["signal_date"],"event_id":v.get("event_id",""),"event_date":v.get("event_date",""),"frozen_support":v.get("frozen_support"),"frozen_resistance":v.get("frozen_resistance"),"risk_level":d.get("risk_level",""),"missing_fields":d.get("missing_fields",[])})
+  out.append({"rule_id":d["rule_id"],"state":d["state"],"signal_date":d["signal_date"],"event_id":v.get("event_id",""),"event_date":v.get("event_date",""),"frozen_support":v.get("frozen_support"),"frozen_resistance":v.get("frozen_resistance"),"risk_level":d.get("risk_level",""),"missing_fields":d.get("missing_fields",[]),"evidence_version":"A-EVIDENCE-1","evidence":v})
  return out
 def validate_cache(path,asof_date=None,batch_size=100,max_results=200,page=1,progress=None,console_progress=False,max_stocks=None):
  if not 1<=int(batch_size)<=1000:return {"errors":["batch_size必须在1到1000之间"]}
