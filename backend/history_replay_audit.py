@@ -46,6 +46,7 @@ def audit_frame(symbol,frame,dates=None):
     x=frame.copy();x["trade_date"]=pd.to_datetime(x["trade_date"]);x=x.sort_values("trade_date").drop_duplicates("trade_date")
     days=sorted(x.trade_date.dt.normalize().unique());targets=days if dates is None else [pd.to_datetime(d).normalize() for d in dates]
     r={"status":"PASS","symbol_count":1,"trading_days_checked":0,"signals_checked":0,"future_leakage_count":0,"state_transition_anomalies":0,"frozen_evidence_anomalies":0,"repeatability_anomalies":0,"evidence_differences":0,"cases":[],"coverage":{f"A{i:02d}":{"status":"UNVERIFIED","days":0,"signals":0} for i in range(1,10)},"unverified":["没有逐日历史结果快照，无法证明持久化结果与重放逐项相等","停牌、涨跌停、复权和分钟数据不在日线输入中"]}
+    freeze_history={}
     for d in targets:
         prefix=x[x.trade_date<=d]
         if prefix.empty:continue
