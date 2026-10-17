@@ -36,10 +36,11 @@ def _market_check(c,code,date):
     try: row=c.execute("SELECT open,high,low,close,vol,amount FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()
     except sqlite3.OperationalError: row=c.execute("SELECT open,high,low,close,vol FROM daily WHERE ts_code=? AND trade_date=?",(code,str(date))).fetchone()
     if not row:return "market_row_missing",None
-    if any(v is None for v in row):return "market_field_missing",row
+    if any(v is None for v in row[:5]):return "market_field_missing",row
     o,h,l,cl,vol=map(float,row[:5]); amount=float(row[5]) if len(row)>5 else 0.0
-    if not all(math.isfinite(v) for v in row):return "market_nonfinite",row
-    if min(o,h,l,cl)<=0 or vol<0 or amount<0:return "market_nonpositive_or_negative",row
+    if not all(math.isfinite(v) for v in row[:5]):return "market_nonfinite",row
+    if min(o,h,l,cl)<=0 or vol<0:return "market_nonpositive_or_negative",row
+    if len(row)>5 and amount<0:return "market_nonpositive_or_negative",row
     if h<max(o,cl,l) or l>min(o,cl,h):return "market_ohlc_bounds_invalid",row
     return None,row
 
@@ -51,20 +52,26 @@ def audit(results_path,market_path=None):
         rc=_ro(results_path); scan=rc.execute("SELECT id,asof_date,stock_count,signal_count,failed,partial FROM scans WHERE valid=1 ORDER BY id DESC LIMIT 1").fetchone()
         if not scan:out["status"]="NO_VALID_SNAPSHOT";return out
         sid,asof,stock_count,signal_count,failed,partial=scan; rows=rc.execute("SELECT ts_code,rule_id,state,signal_date,event_id,evidence FROM signals WHERE scan_id=? ORDER BY ts_code,signal_date,rule_id,state",(sid,)).fetchall()
+        out["persistence_audit"]={"strategy_fields":{r:list(v) for r,v in RULE_REQUIREMENTS.items()},"validation_fields":"validate_cache 输出的 Evidence 字段按规则保存","persisted_fields":set()}
         out.update(status="OK",scan={"id":sid,"asof_date":asof,"stock_count":stock_count,"signal_count":signal_count,"failed":failed,"partial":bool(partial)},actual_signal_rows=len(rows))
         distinct=len({r[0] for r in rows}); out["actual_distinct_stocks"]=distinct
         if len(rows)!=int(signal_count or 0):out["mismatches"].append({"type":"signal_count","stored":signal_count,"actual":len(rows)})
         if distinct!=int(stock_count or 0):out["mismatches"].append({"type":"stock_count","stored":stock_count,"actual":distinct})
-        if market_path and os.path.exists(market_path):mc=_ro(market_path)
+        if market_path and os.path.exists(market_path):
+            mc=_ro(market_path)
+            cols={r[1] for r in mc.execute("PRAGMA table_info(daily)")}
+            out["data_checks"]["columns"]=sorted(cols)
+            out["data_checks"]["missing_optional_fields"]=[x for x in ("amount","turnover_rate") if x not in cols]
+            if "amount" not in cols: out["data_checks"]["amount_status"]="数据库未提供 amount 字段"
         exact=Counter(); event_states=defaultdict(set); cross=defaultdict(set)
         for code,rule,state,date,event_id,raw in rows:
-            ev=_json(raw); meta=out["rules"].setdefault(rule,{"total":0,"states":{}});meta["total"]+=1;meta["states"][state]=meta["states"].get(state,0)+1
+            ev=_json(raw); out["persistence_audit"]["persisted_fields"].update(ev.keys()); meta=out["rules"].setdefault(rule,{"total":0,"states":{}});meta["total"]+=1;meta["states"][state]=meta["states"].get(state,0)+1
             if state.lower() in out["state_summary"]:out["state_summary"][state.lower()]+=1
             reasons=[]; required=RULE_REQUIREMENTS.get(rule,())
             watch=state=="WATCH"
             for field in required:
                 if field=="event_id" and watch:continue
-                if field not in ev or ev[field] in (None,"",[]):reasons.append("缺少:"+field)
+                if field not in ev or ev[field] in (None,"",[]):reasons.append("持久化证据不足，缺少:"+field)
             if state not in STATES:reasons.append("未知状态")
             if "event_id" in required and event_id and ev.get("event_id") and str(event_id)!=str(ev["event_id"]):reasons.append("event_id不一致")
             for field in ("frozen_support","frozen_resistance","frozen_volume_baseline"):
