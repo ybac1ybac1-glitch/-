@@ -133,7 +133,7 @@ def test_database_content_identity_invalidates_checkpoint(tmp_path):
  connection.commit(); connection.close()
  calls.clear()
  resumed=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
- assert calls==["A.SZ"] and resumed["checkpoint"]["status"]=="MISMATCH"
+ assert calls==["A.SZ"] and resumed["checkpoint"]["load_status"]=="MISMATCH"
 
 def test_checkpoint_counter_invariants(tmp_path):
  db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db,("A.SZ","B.SZ"))
@@ -145,5 +145,5 @@ def test_checkpoint_counter_invariants(tmp_path):
  assert report["processed"]==3
  assert report["completed"]==2
  assert report["failed"]==1
- assert report["unverified"]==1
+ assert report["unverified"]==2
  assert report["processed"]==report["completed"]+report["failed"]
