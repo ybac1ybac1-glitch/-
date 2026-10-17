@@ -11,14 +11,14 @@ def make_result(path,rows,partial=0):
 
 def test_audit_counts_states_and_evidence(tmp_path):
     p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1",'{"frozen_support":10}'),("600001.SH","A03","CANDIDATE","20250103","e1",'{"frozen_support":10}'),("600002.SH","A05","CONFIRMED","20250103","e2",'{"frozen_resistance":12}')])
-    r=audit(str(p)); assert r["actual_signal_rows"]==3 and r["state_summary"]=={"candidate":2,"confirmed":1,"invalidated":0}; assert r["duplicates"]["exact_signal_rows"]==1
+    r=audit(str(p)); assert r["actual_signal_rows"]==3 and r["state_summary"]=={"candidate":2,"confirmed":1,"invalidated":0}; assert len(r["duplicates"]["exact_records"])==1
 
 def test_audit_flags_missing_and_invalid_evidence(tmp_path):
     p=tmp_path/"r.sqlite3"; make_result(p,[("600001.SH","A04","CANDIDATE","20250103","","{\"frozen_support\":0}")])
     r=audit(str(p)); assert r["evidence"]["incomplete"]==1 and r["untraceable"][0]["event_id"]==""
 
 def test_audit_market_traceability_and_read_only(tmp_path):
-    p=tmp_path/"r.sqlite3"; m=tmp_path/"m.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1","{}")])
+    p=tmp_path/"r.sqlite3"; m=tmp_path/"m.sqlite3"; make_result(p,[("600001.SH","A03","CANDIDATE","20250103","e1","{\"event_id\":\"e1\",\"event_date\":\"20250103\",\"frozen_support\":9}")])
     c=sqlite3.connect(m); c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real)"); c.execute("insert into daily values('600001.SH','20250103',10,11,9,10.5,100)"); c.commit();c.close()
     r=audit(str(p),str(m)); assert r["data_checks"]["market_rows_checked"]==1 and r["evidence"]["complete"]==1
     ro=sqlite3.connect("file:"+str(m)+"?mode=ro",uri=True)
