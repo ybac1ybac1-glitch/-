@@ -75,3 +75,13 @@ def test_coverage_matrix_does_not_promote_rule_from_single_signal():
         assert "capabilities" in entry
         if entry["signals"]>0:
             assert entry["capabilities"]["waiting_15_sessions"]["status"]=="UNVERIFIED"
+
+def test_integer_and_string_date_formats_have_positive_days():
+    from history_replay_audit import audit
+    x=frame(5); x["trade_date"]=[int(d.strftime("%Y%m%d")) for d in pd.bdate_range("2025-01-01",periods=5)]
+    r=audit("600001.SH",x); assert r["trading_days_checked"]>0
+
+def test_same_day_legal_transition_and_state_dedup():
+    from history_replay_audit import _state_checks
+    e={"event_type":"SPRING","event_id":"e","event_date":"20260102","current_state":"TEST_CANDIDATE","transition_history":[{"date":"20260102","from":None,"to":"CANDIDATE"},{"date":"20260105","from":"CANDIDATE","to":"WAITING_TEST"},{"date":"20260105","from":"WAITING_TEST","to":"TEST_CANDIDATE"}]}
+    assert not [x for x in _state_checks([e]) if x["type"]=="date_regression"]
