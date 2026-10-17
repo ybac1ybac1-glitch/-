@@ -144,6 +144,8 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
         entries=list(completed_entries)
         for position, code in enumerate(requested, start=1):
             execution_error = False
+            prep_elapsed = 0.0
+            audit_elapsed = 0.0
             if code in cached:
                 result = cached[code]["result"]
                 elapsed = float(cached[code].get("elapsed_seconds", 0.0))
