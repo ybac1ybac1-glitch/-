@@ -11,7 +11,7 @@ def db(path,n=30):
 
 def test_professional_chart_axes_ohlc_and_ma_source():
     t=Path(__file__).parents[1].joinpath("backend/templates/strategy_a_v4_stock.html").read_text()
-    for token in ("MA5","MA10","MA20","function ma(","const hi=","cross","wheel","mousedown","成交量","成交额"):
+    for token in ("MA5","MA10","MA20","function ma(","const top","cross","wheel","mousedown","成交量","成交额"):
         assert token in t
 
 def test_api_bad_days_never_500(tmp_path,monkeypatch):
