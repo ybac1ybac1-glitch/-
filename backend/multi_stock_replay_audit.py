@@ -124,7 +124,7 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
     requested=list(stocks); fingerprint=_fingerprint(path,requested,asof,results_db)
     completed_entries, checkpoint_status = _load_checkpoint(checkpoint,fingerprint,requested)
     cached={entry["symbol"]:entry for entry in completed_entries}
-    out={"status":"PASS","database":os.fspath(path),"stocks_requested":requested,"requested":len(requested),"completed":0,"unverified":0,"failed":0,"stocks_audited":0,"stocks_failed":0,"processed":0,"results":[],"summary":{"PASS":0,"FAIL":0,"UNVERIFIED":0},"actual_asof":None,"results_snapshot":_results_meta(results_db),"checkpoint":{"path":os.fspath(checkpoint) if checkpoint else None,"status":checkpoint_status,"fingerprint":fingerprint},"timing":{"started_at":datetime.now(timezone.utc).isoformat(),"elapsed_seconds":0.0,"per_stock":{}}}
+    out={"status":"PASS","database":os.fspath(path),"stocks_requested":requested,"requested":len(requested),"completed":0,"unverified":0,"failed":0,"stocks_audited":0,"stocks_failed":0,"processed":0,"results":[],"summary":{"PASS":0,"FAIL":0,"UNVERIFIED":0},"actual_asof":None,"results_snapshot":_results_meta(results_db),"checkpoint":{"path":os.fspath(checkpoint) if checkpoint else None,"status":checkpoint_status,"fingerprint":fingerprint},"timing":{"started_at":datetime.now(timezone.utc).isoformat(),"elapsed_seconds":0.0,"per_stock":{},"phase_totals":{"data_preparation_seconds":0.0,"audit_frame_seconds":0.0}}}
     started=time.perf_counter(); connection=None; evaluator=audit_fn or audit_frame
     def save_checkpoint(entries, interrupted=False):
         if checkpoint: _atomic_json(checkpoint,_checkpoint_payload(fingerprint,entries,interrupted))
@@ -167,8 +167,11 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
                             result = {"symbol": code, "status": "UNVERIFIED", "reason": "截止日期早于该股票最早交易日"}
                         else:
                             actual = pd.to_datetime(use["trade_date"].astype(str), errors="coerce").max().normalize()
+                            prep_elapsed = time.perf_counter() - one_started
+                            audit_started = time.perf_counter()
                             result = dict(evaluator(code, use, None))
                             result["actual_asof"] = actual.strftime("%Y-%m-%d")
+                            audit_elapsed = time.perf_counter()
                     elapsed = time.perf_counter() - one_started
                 except KeyboardInterrupt:
                     save_checkpoint(entries, interrupted=True)
@@ -181,14 +184,14 @@ def audit_database(path, stocks, asof=None, results_db=None, checkpoint=None, pr
                     out["failed"] += 1
                     out["stocks_failed"] += 1
                 if not execution_error:
-                    entry = {"symbol": code, "result": result, "elapsed_seconds": elapsed}
+                    entry = {"symbol": code, "result": result, "elapsed_seconds": elapsed, "data_preparation_seconds": prep_elapsed, "audit_frame_seconds": audit_elapsed}
                     entries.append(entry)
                     cached[code] = entry
                     save_checkpoint(entries)
                 if progress:
                     state = "异常" if execution_error else result.get("status", "UNVERIFIED")
                     _progress(f"[{position}/{len(requested)}] 完成 {code}，已完成 {len(entries)}，耗时 {elapsed:.2f}s，{state}")
-            out["timing"]["per_stock"][code] = elapsed
+            out["timing"]["per_stock"][code] = {"total_seconds": elapsed, "data_preparation_seconds": prep_elapsed, "audit_frame_seconds": audit_elapsed}\n            out["timing"]["phase_totals"]["data_preparation_seconds"] += prep_elapsed\n            out["timing"]["phase_totals"]["audit_frame_seconds"] += audit_elapsed
             out["results"].append(result)
             out["processed"] += 1
             status = result.get("status", "UNVERIFIED")
