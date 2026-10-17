@@ -29,3 +29,25 @@ python -m strategy_a_audit --results backend\strategy_a_results.sqlite3 --market
 证据不足：没有用户本机真实数据库不能复现本地样本；仅凭结果快照不能证明完整历史重放没有未来函数，也不能替代人工判断停牌、ST、涨跌停、复权口径和派发结构。
 
 建议：本阶段不修改 A01-A09 逻辑或阈值。先用工具输出定位证据缺失、重复和异常样本，再由验收决定是否进入逻辑修复阶段。
+
+## 逐规则证据要求
+
+审计模块按策略 A 实现与 P2.1 规范区分必需字段、可选字段和不适用字段：
+
+|规则|必需字段|可选/不适用|
+|---|---|---|
+|A01|valid、support、resistance、width、slope、valid_sessions|event_id、冻结边界事件字段不要求|
+|A02|recent_volume、base_volume、pullback、liquid|event_id、冻结边界不要求|
+|A03|有事件时 event_id、event_date、frozen_support|无事件的 WATCH 可为空|
+|A04|有测试事件时 event_id、spring_date、transition|无测试的 WATCH 可为空|
+|A05|有 SOS 时 event_id、event_date、frozen_resistance、frozen_volume_baseline|无事件的 WATCH 可为空|
+|A06|有 LPS 事件时 event_id、sos_date、transition|无 LPS 的 WATCH 可为空|
+|A07|volume_effort、price_result|不要求事件 ID|
+|A08|price_up、volume_down|不要求事件 ID|
+|A09|risk_conditions、independent_conditions|不要求事件 ID|
+
+## 两层结论
+
+持久化结果审计统计已执行：规则字段、状态、重复记录、信号/股票计数、行情追溯和 OHLC 有限性/边界检查。
+
+策略逻辑审计仍标记为“未验证”：仅凭保存结果不能证明 A01–A09 的逐日条件、冻结区间、15 日等待、状态终态和未来数据约束全部正确；这些需要独立回放和人工核对。审计模块不会调整阈值或生成新信号。
