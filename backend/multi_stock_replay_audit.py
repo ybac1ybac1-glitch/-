@@ -77,7 +77,11 @@ def _database_identity(path):
             connection.close()
 
 def _fingerprint(path, stocks, asof, results_db):
-    payload = {"database":os.path.abspath(os.fspath(path)),"database_identity":_database_identity(path),"stocks":list(stocks),"asof":asof,"results_db":os.path.abspath(os.fspath(results_db)) if results_db else None,"strategy_version":STRATEGY_VERSION,"audit_config":AUDIT_CONFIG_VERSION,"code_digest":_code_digest()}
+    try:
+        identity = _database_identity(path)
+    except (OSError, sqlite3.Error) as exc:
+        identity = {"unavailable": type(exc).__name__, "detail": str(exc)}
+    payload = {"database":os.path.abspath(os.fspath(path)),"database_identity":identity,"stocks":list(stocks),"asof":asof,"results_db":os.path.abspath(os.fspath(results_db)) if results_db else None,"strategy_version":STRATEGY_VERSION,"audit_config":AUDIT_CONFIG_VERSION,"code_digest":_code_digest()}
     return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True).encode("utf-8")).hexdigest()
 
 def _atomic_json(path, value):
