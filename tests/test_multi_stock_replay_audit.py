@@ -100,3 +100,50 @@ def test_failed_stock_is_checkpointed_and_isolated(tmp_path):
   return {"symbol":symbol,"status":"PASS"}
  report=audit_database(str(db),["A.SZ","B.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
  assert report["processed"]==2 and report["failed"]==1 and report["stocks_audited"]==1
+
+
+def test_normal_fail_conclusion_counts_completed_not_failed(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ def fake(symbol, frame, _): return {"symbol":symbol,"status":"FAIL","trading_days_checked":1}
+ report=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert report["requested"]==1 and report["processed"]==1
+ assert report["completed"]==1 and report["failed"]==0
+ assert report["summary"]["FAIL"]==1 and report["stocks_audited"]==1
+
+def test_execution_exception_is_not_checkpointed_and_retries(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ calls=[]; fail_once={"value":True}
+ def fake(symbol, frame, _):
+  calls.append(symbol)
+  if fail_once["value"]:
+   fail_once["value"]=False; raise RuntimeError("transient")
+  return {"symbol":symbol,"status":"PASS","trading_days_checked":1}
+ first=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert first["processed"]==1 and first["failed"]==1 and first["completed"]==0
+ second=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert calls==["A.SZ","A.SZ"] and second["completed"]==1 and second["failed"]==0
+
+def test_database_content_identity_invalidates_checkpoint(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db)
+ calls=[]
+ def fake(symbol, frame, _): calls.append(symbol); return {"symbol":symbol,"status":"PASS"}
+ audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ connection=sqlite3.connect(db)
+ connection.execute("insert into daily values(?,?,?,?,?,?,?,?)",("A.SZ","2026-01-02",10,11,9,10,100,1000))
+ connection.commit(); connection.close()
+ calls.clear()
+ resumed=audit_database(str(db),["A.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert calls==["A.SZ"] and resumed["checkpoint"]["status"]=="MISMATCH"
+
+def test_checkpoint_counter_invariants(tmp_path):
+ db=tmp_path/"m.sqlite3"; checkpoint=tmp_path/"checkpoint.json"; _make_daily(db,("A.SZ","B.SZ"))
+ def fake(symbol, frame, _):
+  if symbol=="B.SZ": raise RuntimeError("failed")
+  return {"symbol":symbol,"status":"UNVERIFIED"}
+ report=audit_database(str(db),["A.SZ","B.SZ","C.SZ"],checkpoint=checkpoint,audit_fn=fake,progress=False)
+ assert report["requested"]==3
+ assert report["processed"]==3
+ assert report["completed"]==1
+ assert report["failed"]==1
+ assert report["unverified"]==1
+ assert report["processed"]==report["completed"]+report["failed"]+report["unverified"]
