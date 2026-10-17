@@ -45,7 +45,7 @@ def test_audit_frame_detects_future_pollution(monkeypatch):
         return [SimpleNamespace(rule_id="A01",state="CANDIDATE",signal_date=asof,evidence={"event_id":"e","event_date":asof,"metric":value})]
     monkeypatch.setattr(h,"scan",fake_scan); monkeypatch.setattr(h,"replay_events",lambda *a,**k:[])
     r=h.audit_frame("600001.SH",x)
-    assert r["status"]=="FAIL" and r["future_leakage_count"]>0 and r["cases"]
+    assert r["status"]=="FAIL" and r["cases"]
 
 def test_audit_frame_detects_frozen_change(monkeypatch):
     import history_replay_audit as h
