@@ -101,6 +101,7 @@ def audit(results_path,market_path=None):
         out["audit_conclusions"]={"verified":["持久化统计和字段审计","只读数据库连接","OHLC有限性及边界检查"],"findings":[],"evidence_insufficient":["无用户真实数据库不复现本地样本","逻辑时序仍需独立回放验证"]}
         if out["mismatches"]:out["audit_conclusions"]["findings"].append("扫描快照计数与实际信号/股票数量不一致")
         if out["untraceable"]:out["audit_conclusions"]["findings"].append("存在规则证据缺失或不可追溯信号")
+        out["persistence_audit"]["persisted_fields"]=sorted(out["persistence_audit"].get("persisted_fields",()))
         return out
     finally:
         if mc:mc.close()
