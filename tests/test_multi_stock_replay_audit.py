@@ -31,3 +31,19 @@ def test_results_db_valid_snapshot_is_read_only(tmp_path):
  p=tmp_path/"m.sqlite3";rdb=tmp_path/"r.sqlite3";c=sqlite3.connect(p);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)");c.commit();c.close()
  c=sqlite3.connect(rdb);c.execute("create table scans(id integer primary key,asof_date text,signal_count integer,partial integer,valid integer)");c.execute("create table signals(scan_id integer)");c.execute("insert into scans values(1,'2026-01-01',0,0,1)");c.commit();c.close()
  r=audit_database(str(p),["000001.SZ"],results_db=str(rdb));assert r["results_snapshot"]["scan_id"]==1
+
+def test_results_schema_missing_partial_is_reported(tmp_path):
+ p=tmp_path/"m.sqlite3";rdb=tmp_path/"r.sqlite3";c=sqlite3.connect(p);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)");c.commit();c.close()
+ c=sqlite3.connect(rdb);c.execute("create table scans(id integer primary key,asof_date text,signal_count integer,valid integer)");c.execute("create table signals(scan_id integer)");c.commit();c.close()
+ r=audit_database(str(p),["000001.SZ"],results_db=str(rdb));assert "partial" in r["results_snapshot"]["reason"]
+
+def test_invalid_asof_is_rejected_not_treated_as_none(tmp_path):
+ p=tmp_path/"m.sqlite3";c=sqlite3.connect(p);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)");c.commit();c.close()
+ r=audit_database(str(p),["000001.SZ"],asof="20261345");assert r["status"]=="UNVERIFIED" and "asof" in r["error"]
+
+def test_valid_results_db_json_and_counter_consistency(tmp_path):
+ p=tmp_path/"m.sqlite3";rdb=tmp_path/"r.sqlite3";c=sqlite3.connect(p);c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)")
+ for i in range(3):c.execute("insert into daily values('000001.SZ',?,?,?,?,?,?,?)",(f"2026010{i+1}",10,11,9,10,100,1000))
+ c.commit();c.close()
+ c=sqlite3.connect(rdb);c.execute("create table scans(id integer primary key,asof_date text,signal_count integer,partial integer,valid integer)");c.execute("create table signals(scan_id integer)");c.execute("insert into scans values(1,'2026-01-03',0,0,1)");c.commit();c.close()
+ r=audit_database(str(p),["000001.SZ"],asof="2026-01-03",results_db=str(rdb));json.dumps(r);assert r["requested"]==1 and r["completed"]==1 and r["failed"]==0 and r["stocks_audited"]==1
