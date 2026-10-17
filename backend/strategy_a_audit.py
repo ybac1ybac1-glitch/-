@@ -67,18 +67,18 @@ def audit(results_path,market_path=None):
             if "amount" not in cols: out["data_checks"]["amount_status"]="数据库未提供 amount 字段"
         exact=Counter(); event_states=defaultdict(set); cross=defaultdict(set)
         for code,rule,state,date,event_id,raw in rows:
-            ev=_json(raw); out["persistence_audit"]["persisted_fields"].update(ev.keys()); meta=out["rules"].setdefault(rule,{"total":0,"states":{}});meta["total"]+=1;meta["states"][state]=meta["states"].get(state,0)+1
+            ev=_json(raw); nested=ev.get("evidence") if isinstance(ev.get("evidence"),dict) else {}; effective={**ev,**nested}; out["persistence_audit"]["persisted_fields"].update(ev.keys()); out["persistence_audit"].setdefault("nested_fields",set()).update(nested.keys()); meta=out["rules"].setdefault(rule,{"total":0,"states":{}});meta["total"]+=1;meta["states"][state]=meta["states"].get(state,0)+1
             if state.lower() in out["state_summary"]:out["state_summary"][state.lower()]+=1
             reasons=[]; required=RULE_REQUIREMENTS.get(rule,())
             watch=state=="WATCH"
             for field in required:
                 if field=="event_id" and watch:continue
-                if field not in ev or ev[field] in (None,"",[]):reasons.append("持久化证据不足，缺少:"+field)
+                if field not in effective or effective[field] in (None,"",[]):reasons.append("持久化证据不足，缺少:"+field)
             if state not in STATES:reasons.append("未知状态")
-            if "event_id" in required and event_id and ev.get("event_id") and str(event_id)!=str(ev["event_id"]):reasons.append("event_id不一致")
+            if "event_id" in required and event_id and effective.get("event_id") and str(event_id)!=str(effective["event_id"]):reasons.append("event_id不一致")
             for field in ("frozen_support","frozen_resistance","frozen_volume_baseline"):
-                if field in ev and ev[field] is not None and not _finite_positive(ev[field]):reasons.append(field+"非法")
-            if ev.get("event_date") and date and str(ev["event_date"])>str(date):reasons.append("事件日期晚于信号日期")
+                if field in effective and effective[field] is not None and not _finite_positive(effective[field]):reasons.append(field+"非法")
+            if effective.get("event_date") and date and str(effective["event_date"])>str(date):reasons.append("事件日期晚于信号日期")
             issue,bar=_market_check(mc,code,date);out["data_checks"]["checked"]+=bool(mc);out["data_checks"]["market_rows_checked"]+=bool(mc)
             if issue and issue!="market_not_checked":
                 reasons.append(issue)
@@ -102,6 +102,7 @@ def audit(results_path,market_path=None):
         if out["mismatches"]:out["audit_conclusions"]["findings"].append("扫描快照计数与实际信号/股票数量不一致")
         if out["untraceable"]:out["audit_conclusions"]["findings"].append("存在规则证据缺失或不可追溯信号")
         out["persistence_audit"]["persisted_fields"]=sorted(out["persistence_audit"].get("persisted_fields",()))
+        out["persistence_audit"]["nested_fields"]=sorted(out["persistence_audit"].get("nested_fields",()))
         return out
     finally:
         if mc:mc.close()
