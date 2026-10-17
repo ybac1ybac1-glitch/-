@@ -109,7 +109,7 @@ def strategy_a_v4_stock(ts_code):
     if os.path.exists(cache_path):
         c=ro(cache_path)
         try:
-            rows=c.execute('SELECT ts_code,trade_date,open,high,low,close,pct_chg,vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT 240',(ts_code,)).fetchall()
+            rows=c.execute('SELECT ts_code,trade_date,open,high,low,close,pct_chg,vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT 250',(ts_code,)).fetchall()
             bars=[dict(zip(('ts_code','trade_date','open','high','low','close','pct_chg','vol','amount'),x)) for x in reversed(rows)]
         except sqlite3.Error: bars=[]
         finally: c.close()
@@ -123,12 +123,14 @@ def strategy_a_v4_stock(ts_code):
         except (sqlite3.Error,ValueError): signals=[]
         finally: c.close()
     if not bars and not signals: abort(404)
-    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars,signals=signals)
+    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars[-120:],signals=signals)
 
 @app.get('/strategy/a/v4/stock/<ts_code>/data')
 def strategy_a_v4_stock_data(ts_code):
     from flask import request
-    days=int(request.args.get('days',120))
+    raw=request.args.get('days','120')
+    try: days=int(raw)
+    except (TypeError,ValueError): return jsonify({'error':'days必须为60、120或250'}),400
     if days not in (60,120,250): return jsonify({'error':'days必须为60、120或250'}),400
     path=os.path.join(os.path.dirname(__file__),'market_cache.sqlite3')
     if not os.path.exists(path): return jsonify({'error':'本地行情数据库不存在'}),404
