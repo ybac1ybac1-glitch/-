@@ -43,7 +43,7 @@ def test_javascript_coordinate_and_ma_behavior():
     script=re.sub(r"\{\{.*?\}\}","null",script)
     node=shutil.which("node")
     if not node:return
-    js="const canvas={width:1000,height:460,getContext:()=>({clearRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},fillRect(){},fillText(){},setLineDash(){}}),addEventListener(){},getBoundingClientRect:()=>({left:0,top:0,width:1000,height:460})};const document={getElementById:()=>canvas,querySelector:()=>({checked:true}),querySelectorAll:()=>[],};const window={addEventListener(){}};"+script+";const vals=[...Array(20)].map((_,i)=>({close:i+1}));if(window.chartMath.visibleIndex(500,{left:0,width:1000},1000,8,78,10)!==5)throw Error('index');if(window.chartMath.movingAverage(vals,19,20)!==10.5)throw Error('ma');if(window.chartMath.movingAverage(vals,5,20)!==null)throw Error('insufficient');"
+    js="const stubCanvas={width:1000,height:460,getContext:()=>({clearRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},fillRect(){},fillText(){},setLineDash(){}}),addEventListener(){},getBoundingClientRect:()=>({left:0,top:0,width:1000,height:460})};const document={getElementById:()=>stubCanvas,querySelector:()=>({checked:true}),querySelectorAll:()=>[],};const window={addEventListener(){}};"+script+";const vals=[...Array(20)].map((_,i)=>({close:i+1}));if(window.chartMath.visibleIndex(500,{left:0,width:1000},1000,8,78,10)!==5)throw Error('index');if(window.chartMath.movingAverage(vals,19,20)!==10.5)throw Error('ma');if(window.chartMath.movingAverage(vals,5,20)!==null)throw Error('insufficient');"
     with tempfile.NamedTemporaryFile("w",suffix=".js",delete=False) as f:
         f.write(js); name=f.name
     try:
