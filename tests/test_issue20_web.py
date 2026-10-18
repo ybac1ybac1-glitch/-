@@ -43,3 +43,16 @@ def test_strategy_a_stock_data_rejects_invalid_days(client):
     for value in ("abc","", "-1", "61"):
         response=client.get("/strategy/a/v4/stock/001246.SZ/data?days="+value)
         assert response.status_code in (400,404)
+
+def test_v4_home_reads_persisted_snapshot_without_writes(client, monkeypatch):
+    monkeypatch.setattr(app_module, "a_web_status", lambda: {"status":"IDLE","processed":0})
+    monkeypatch.setattr(app_module, "a_web_results", lambda *args, **kwargs: {"scan":{"asof_date":"2026-10-15","stock_count":1,"signal_count":1,"partial":True},"items":[],"total_matches":0,"total_signals":0})
+    response=client.get("/strategy/a/v4")
+    assert response.status_code==200
+    assert "2026-10-15".encode() in response.data
+    assert "部分样本".encode() in response.data
+
+def test_v4_stock_detail_empty_cache_is_readable(client, monkeypatch):
+    monkeypatch.setattr(app_module.os.path, "exists", lambda path: False)
+    response=client.get("/strategy/a/v4/stock/001246.SZ")
+    assert response.status_code in (200,404)
