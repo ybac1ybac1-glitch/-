@@ -28,6 +28,9 @@ jobs:
       - name: Check ASCII script and expected missing-db exit
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Continue"
           python -c "from pathlib import Path; Path('backend/windows_acceptance.cmd').read_bytes().decode('ascii')"
           cmd /c backend\windows_acceptance.cmd
-          if ($LASTEXITCODE -ne 1) { throw "expected exit code 1 for missing market database" }
+          $code = $LASTEXITCODE
+          if ($code -ne 1) { throw "expected exit code 1 for missing market database, got $code" }
+          exit 0
