@@ -33,12 +33,12 @@ def test_v4_results_filters_and_paging(monkeypatch):
 
 def test_v4_detail_reads_local_sqlite_only(tmp_path,monkeypatch):
     cache=tmp_path/"market_cache.sqlite3"; result=tmp_path/"strategy_a_results.sqlite3"
-    c=sqlite3.connect(cache); c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)"); c.execute("insert into daily values('600001.SH','20250102',1,2,.8,1.5,100,200)"); c.commit(); c.close()
+    c=sqlite3.connect(cache); c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,pct_chg real,vol real,amount real)"); c.execute("insert into daily values('600001.SH','20250102',1,2,.8,1.5,2.5,100,200)"); c.commit(); c.close()
     c=sqlite3.connect(result); c.execute("create table scans(id integer primary key,asof_date text,created_at text,stock_count integer,signal_count integer,failed integer,partial integer,valid integer)"); c.execute("create table signals(scan_id integer,ts_code text,rule_id text,state text,signal_date text,event_id text,evidence text)"); c.execute("insert into scans values(1,'20250102','',1,1,0,0,1)"); c.execute("insert into signals values(1,'600001.SH','A03','CANDIDATE','20250102','e1','{}')"); c.commit(); c.close()
     monkeypatch.setattr(appmod.os.path,"dirname",lambda _:str(tmp_path))
     monkeypatch.setattr(appmod.os.path,"exists",lambda p:True)
     c=appmod.app.test_client(); r=c.get("/strategy/a/v4/stock/600001.SH")
-    assert r.status_code==200 and b"600001.SH" in r.data and b"A03" in r.data
+    assert r.status_code==200 and b"600001.SH" in r.data and b"A03" in r.data\n    assert b"20250102" in r.data and b"1.5" in r.data and b"100" in r.data and b"200" in r.data
 
 def test_v4_detail_missing_is_404(tmp_path,monkeypatch):
     monkeypatch.setattr(appmod.os.path,"dirname",lambda _:str(tmp_path))
