@@ -23,3 +23,15 @@ def test_acceptance_real_fixture_is_read_only(tmp_path):
     assert report["results"]["latest_scan"]["signal_count"]==1
     assert market.read_bytes()==before_market and result.read_bytes()==before_result
     assert (root/"work"/"acceptance_report.txt").exists()
+
+def test_acceptance_exit_codes_distinguish_market_and_results(tmp_path):
+    import subprocess,sys
+    script=Path(__file__).parents[1]/"backend"/"acceptance_check.py"
+    missing=subprocess.run([sys.executable,str(script),"--root",str(tmp_path),"--report",str(tmp_path/"r.txt")])
+    assert missing.returncode==1
+    backend=tmp_path/"backend"; backend.mkdir()
+    db=backend/"market_cache.sqlite3"; c=sqlite3.connect(db)
+    c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)")
+    c.execute("insert into daily values('001246.SZ','20261015',1,2,.8,1.5,100,200)"); c.commit(); c.close()
+    partial=subprocess.run([sys.executable,str(script),"--root",str(tmp_path),"--report",str(tmp_path/"r2.txt")])
+    assert partial.returncode==2
