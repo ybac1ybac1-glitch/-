@@ -1,4 +1,4 @@
-import threading
+import threading, sqlite3
 from datetime import datetime,timedelta
 import data
 _HISTORY_THREAD=None
