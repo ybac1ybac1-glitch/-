@@ -50,3 +50,11 @@ def test_report_preserves_unverified_without_valid_scan(tmp_path, monkeypatch):
     report=acceptance_check.write_report(root,root/"work"/"r.txt",smoke=True)
     assert report["conclusion"]=="FAIL"
     assert "500" in (root/"work"/"r.txt").read_text(encoding="utf-8")
+
+def test_kline_static_headers_cannot_pass_without_real_values():
+    from acceptance_check import _actual_bar_present
+    market={"001246_latest":{"trade_date":"20261015","close":1.5,"vol":100}}
+    static="<thead><th>交易日</th><th>开</th><th>高</th><th>低</th><th>收</th><th>成交量</th></thead><tbody></tbody>"
+    assert _actual_bar_present(static,market) is False
+    real=static+"<tr><td>20261015</td><td>1.5</td><td>100</td></tr><script>initialBars</script>"
+    assert _actual_bar_present(real,market) is True
