@@ -101,7 +101,8 @@ def write_report(root, report_path, smoke=False):
     lines.append("网页逐项检查：")
     for url,value in smoke_result.items(): lines.append(f"  {url} => {value}")
     lines.append("验收 URL："); lines.extend("  "+u for u in report["urls"])
-    p.write_text("\\n".join(lines)+"\\n",encoding="utf-8")\n    return report
+    p.write_text("\\n".join(lines)+"\\n",encoding="utf-8")
+    return report
 
 if __name__=="__main__":
     ap=argparse.ArgumentParser(); ap.add_argument("--root",default=str(Path(__file__).parents[1])); ap.add_argument("--report"); ap.add_argument("--smoke",action="store_true"); args=ap.parse_args()
