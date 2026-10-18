@@ -50,6 +50,11 @@ def _check(status_code, condition, reason, body=""):
     if status_code != 200: return {"status":"FAIL","http_status":status_code,"reason":reason}
     return {"status":"PASS" if condition else "UNVERIFIED","http_status":status_code,"reason":reason if condition else reason,"body_excerpt":body[:160]}
 
+def _actual_bar_present(body, market):
+    latest=market.get("001246_latest") or {}
+    expected=[latest.get("trade_date"), latest.get("close"), latest.get("vol")]
+    return all(value is not None and str(value) in body for value in expected) and ("initialBars" in body or "<tbody" in body)
+
 def smoke_v4(root, market, results):
     sys.path.insert(0,str(Path(root)/"backend"))
     try:
