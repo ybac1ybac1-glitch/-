@@ -107,7 +107,7 @@ def write_report(root, report_path, smoke=False):
 if __name__=="__main__":
     ap=argparse.ArgumentParser(); ap.add_argument("--root",default=str(Path(__file__).parents[1])); ap.add_argument("--report"); ap.add_argument("--smoke",action="store_true"); args=ap.parse_args()
     report=write_report(args.root,args.report or str(Path(args.root)/"work"/"acceptance_report.txt"),args.smoke)
-    print("汇总结论："+report["conclusion"])
+    print("CONCLUSION="+report["conclusion"])
     if report["conclusion"]=="FAIL": raise SystemExit(1)
     if report["conclusion"]=="UNVERIFIED": raise SystemExit(2)
     raise SystemExit(0)
