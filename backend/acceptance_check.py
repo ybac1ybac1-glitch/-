@@ -19,6 +19,8 @@ def inspect_market(path):
         row=c.execute("select max(trade_date),count(*),count(distinct ts_code) from daily").fetchone()
         out.update(max_trade_date=row[0],daily_rows=row[1],stock_count=row[2])
         out["001246_rows"]=c.execute("select count(*) from daily where ts_code=?",("001246.SZ",)).fetchone()[0]
+        latest=c.execute("select trade_date,close,vol from daily where ts_code=? order by trade_date desc limit 1",("001246.SZ",)).fetchone()
+        out["001246_latest"]={"trade_date":latest[0],"close":latest[1],"vol":latest[2]} if latest else None
     except Exception as exc: out["error"]="行情库读取失败："+str(exc)
     finally:
         if c is not None: c.close()
@@ -69,8 +71,11 @@ def smoke_v4(root, market, results):
             checks["/strategy/a/v4/stock/001246.SZ"]=_check(response.status_code,condition,"001246.SZ无行情，页面应明确显示未验证状态",body)
             if checks["/strategy/a/v4/stock/001246.SZ"]["status"]=="PASS": checks["/strategy/a/v4/stock/001246.SZ"]["status"]="UNVERIFIED"
         else:
-            condition=response.status_code==200 and "交易日" in body and any(token in body for token in ("开","高","低","收")) and "成交量" in body
-            checks["/strategy/a/v4/stock/001246.SZ"]=_check(response.status_code,condition,"未展示可追溯日线 OHLCV 数据",body)
+            latest=market.get("001246_latest") or {}
+            expected=[latest.get("trade_date"), latest.get("close"), latest.get("vol")]
+            values_present=all(value is not None and str(value) in body for value in expected)
+            condition=response.status_code==200 and rows>0 and values_present and ("initialBars" in body or "<tbody" in body)
+            checks["/strategy/a/v4/stock/001246.SZ"]=_check(response.status_code,condition,"未展示行情库中对应的真实交易日、收盘价和成交量",body)
     except Exception as exc: checks["/strategy/a/v4/stock/001246.SZ"]={"status":"FAIL","http_status":None,"reason":str(exc)}
     checks["/"]="SKIPPED_READ_ONLY: 旧V3首页可能调用可写初始化路径"
     checks["/stock/001246.SZ"]="SKIPPED_READ_ONLY: 旧V3详情可能调用可写初始化路径"
@@ -91,7 +96,9 @@ def write_report(root, report_path, smoke=False):
     lines.append("网页逐项检查：")
     for url,value in smoke_result.items(): lines.append(f"  {url} => {value}")
     lines.append("验收 URL："); lines.extend("  "+u for u in report["urls"])
-    p.write_text("\n".join(lines)+"\n",encoding="utf-8")
+    p.write_text("
+".join(lines)+"
+",encoding="utf-8")
     return report
 
 if __name__=="__main__":
