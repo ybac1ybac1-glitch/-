@@ -140,7 +140,11 @@ def strategy_a_v4_stock(ts_code):
     if os.path.exists(cache_path):
         c=ro(cache_path)
         try:
-            rows=c.execute('SELECT ts_code,trade_date,open,high,low,close,pct_chg,vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT 250',(ts_code,)).fetchall()
+            cols={r[1] for r in c.execute('PRAGMA table_info(daily)')}
+            required=('trade_date','open','high','low','close','vol','amount')
+            if not set(required).issubset(cols): raise sqlite3.Error('daily表缺少OHLCV字段')
+            pct='pct_chg' if 'pct_chg' in cols else 'NULL AS pct_chg'
+            rows=c.execute(f'SELECT ts_code,trade_date,open,high,low,close,{pct},vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT 250',(ts_code,)).fetchall()
             bars=[dict(zip(('ts_code','trade_date','open','high','low','close','pct_chg','vol','amount'),x)) for x in reversed(rows)]
         except sqlite3.Error: bars=[]
         finally: c.close()
