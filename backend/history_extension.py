@@ -65,7 +65,11 @@ def start(limit=360):
 def verify_cached_date(db_path, trade_date, backup_path=None):
     """Verify one cached day and persist only its task state; never downloads bars."""
     import os, shutil
-    day=str(trade_date).replace("-","")
+    day=str(trade_date).replace("-", "")
+    if day.lower()=="latest":
+        probe=sqlite3.connect(db_path)
+        try: day=str(probe.execute("select max(trade_date) from daily").fetchone()[0] or "")
+        finally: probe.close()
     if len(day)!=8 or not day.isdigit(): return {"status":"UNVERIFIED","error":"trade_date必须为YYYYMMDD"}
     if backup_path:
         if os.path.exists(backup_path): return {"status":"UNVERIFIED","error":"备份文件已存在，拒绝覆盖"}
