@@ -38,7 +38,8 @@ def test_v4_detail_reads_local_sqlite_only(tmp_path,monkeypatch):
     monkeypatch.setattr(appmod.os.path,"dirname",lambda _:str(tmp_path))
     monkeypatch.setattr(appmod.os.path,"exists",lambda p:True)
     c=appmod.app.test_client(); r=c.get("/strategy/a/v4/stock/600001.SH")
-    assert r.status_code==200 and b"600001.SH" in r.data and b"A03" in r.data\n    assert b"20250102" in r.data and b"1.5" in r.data and b"100" in r.data and b"200" in r.data
+    assert r.status_code==200 and b"600001.SH" in r.data and b"A03" in r.data
+    assert b"20250102" in r.data and b"1.5" in r.data and b"100" in r.data and b"200" in r.data
 
 def test_v4_detail_missing_is_404(tmp_path,monkeypatch):
     monkeypatch.setattr(appmod.os.path,"dirname",lambda _:str(tmp_path))
