@@ -153,7 +153,7 @@ def strategy_a_v4_stock(ts_code):
                     signals.append({'rule_id':x[0],'state':x[1],'signal_date':x[2],'event_id':x[3],'evidence':json.loads(x[4])})
         except (sqlite3.Error,ValueError): signals=[]
         finally: c.close()
-    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars[-120:],ma_context=bars[-139:-120],signals=signals,empty_message="暂无本地行情数据" if not bars else "",source="本地 market_cache.sqlite3（只读）")
+    if not bars and not signals and not os.path.exists(cache_path) and not os.path.exists(result_path):\n        abort(404)\n    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars[-120:],ma_context=bars[-139:-120],signals=signals,empty_message="暂无本地行情数据" if not bars else "",source="本地 market_cache.sqlite3（只读）")
 
 @app.get('/strategy/a/v4/stock/<ts_code>/data')
 def strategy_a_v4_stock_data(ts_code):
