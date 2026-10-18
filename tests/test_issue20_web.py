@@ -56,3 +56,19 @@ def test_v4_stock_detail_empty_cache_is_readable(client, monkeypatch):
     monkeypatch.setattr(app_module.os.path, "exists", lambda path: False)
     response=client.get("/strategy/a/v4/stock/001246.SZ")
     assert response.status_code in (200,404)
+
+def test_v4_result_store_reads_real_fixture_without_mutation(tmp_path):
+    import sqlite3
+    from strategy_a_store import results
+    path=tmp_path/"strategy_a_results.sqlite3"
+    db=sqlite3.connect(path)
+    db.execute("create table scans(id integer primary key,asof_date text,created_at text,stock_count integer,signal_count integer,failed integer,partial integer,valid integer)")
+    db.execute("create table signals(scan_id integer,ts_code text,rule_id text,state text,signal_date text,event_id text,evidence text)")
+    db.execute("insert into scans values(1,'2026-10-15','',1,1,0,1,1)")
+    db.execute("insert into signals values(1,'001246.SZ','A03','CANDIDATE','2026-10-15','e1','{}')")
+    db.commit(); db.close()
+    before=path.read_bytes()
+    data=results(str(path),1,10)
+    assert data["scan"]["asof_date"]=="2026-10-15"
+    assert data["items"][0]["ts_code"]=="001246.SZ"
+    assert path.read_bytes()==before
