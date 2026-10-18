@@ -9,16 +9,20 @@ from history_extension import start as start_history_extend
 from validation import validate_cache,start as start_validation,status as validation_status,get_results
 from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results
 import os, sqlite3, json, math
+import pandas as pd
 app=Flask(__name__)
 
 def _clean_value(value):
     try:
-        if value is None or (isinstance(value, float) and math.isnan(value)):
+        if value is None:
             return None
         if hasattr(value, "item"):
             value = value.item()
-            if isinstance(value, float) and math.isnan(value):
-                return None
+        if isinstance(value, (float, int)) and not math.isfinite(float(value)):
+            return None
+        missing = pd.isna(value)
+        if isinstance(missing, bool) and missing:
+            return None
     except Exception:
         return None
     return value
