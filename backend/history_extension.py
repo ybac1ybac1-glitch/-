@@ -83,7 +83,7 @@ def verify_cached_date(db_path, trade_date, backup_path=None):
         required=REQ|{"turnover_rate"}; missing=required-cols
         if missing: raise ValueError("daily缺少字段:"+",".join(sorted(missing)))
         rows=c.execute("SELECT open,high,low,close,vol,amount,turnover_rate FROM daily WHERE trade_date=?",(day,)).fetchall()
-        invalid=sum(1 for row in rows if any(v is None for v in row[:6]) or float(row[0])<=0 or float(row[3])<=0 or float(row[2])<float(row[1]) or float(row[4])<0 or float(row[5])<0)
+        invalid=sum(1 for row in rows if any(v is None for v in row[:6]) or float(row[0])<=0 or float(row[3])<=0 or float(row[1])<float(row[2]) or float(row[4])<0 or float(row[5])<0)
         missing_turnover=sum(1 for row in rows if row[6] is None)
         if not rows: status,error,ohlcv,turnover="FAILED","无该日期行情","PENDING_VERIFY","PENDING_VERIFY"
         elif invalid: status,error,ohlcv,turnover="PARTIAL_MISSING",f"异常OHLCV行{invalid}","PENDING_VERIFY","PENDING_VERIFY"
