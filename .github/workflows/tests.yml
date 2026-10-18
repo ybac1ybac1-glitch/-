@@ -14,3 +14,20 @@ jobs:
         with: {python-version: '3.11'}
       - run: python -m pip install -r requirements.txt pytest
       - run: python -m pytest -q
+  windows-script:
+    runs-on: windows-latest
+    env:
+      CI: 'true'
+      TUSHARE_TOKEN: ''
+      TUSHARE_MAX_REQUESTS_PER_MINUTE: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -r requirements.txt
+      - name: Check ASCII script and expected missing-db exit
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; Path('backend/windows_acceptance.cmd').read_bytes().decode('ascii')"
+          cmd /c backend\windows_acceptance.cmd
+          if ($LASTEXITCODE -ne 1) { throw "expected exit code 1 for missing market database" }
