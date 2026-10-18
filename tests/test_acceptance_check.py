@@ -35,3 +35,18 @@ def test_acceptance_exit_codes_distinguish_market_and_results(tmp_path):
     c.execute("insert into daily values('001246.SZ','20261015',1,2,.8,1.5,100,200)"); c.commit(); c.close()
     partial=subprocess.run([sys.executable,str(script),"--root",str(tmp_path),"--report",str(tmp_path/"r2.txt")])
     assert partial.returncode==2
+
+def test_smoke_http_500_is_fail_not_pass():
+    from acceptance_check import _check
+    assert _check(500, True, "v4 error")["status"]=="FAIL"
+
+def test_report_preserves_unverified_without_valid_scan(tmp_path, monkeypatch):
+    import acceptance_check
+    root=tmp_path; backend=root/"backend"; backend.mkdir()
+    db=backend/"market_cache.sqlite3"; c=sqlite3.connect(db)
+    c.execute("create table daily(ts_code text,trade_date text,open real,high real,low real,close real,vol real,amount real)")
+    c.execute("insert into daily values('001246.SZ','20261015',1,2,.8,1.5,100,200)"); c.commit(); c.close()
+    monkeypatch.setattr(acceptance_check, "smoke_v4", lambda *args: {"/strategy/a/v4":{"status":"FAIL","http_status":500,"reason":"server error"}})
+    report=acceptance_check.write_report(root,root/"work"/"r.txt",smoke=True)
+    assert report["conclusion"]=="FAIL"
+    assert "500" in (root/"work"/"r.txt").read_text(encoding="utf-8")
