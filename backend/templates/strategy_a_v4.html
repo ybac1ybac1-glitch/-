@@ -6,7 +6,7 @@
 <div><label>规则 <select id="rule"><option value="">全部</option>{% for i in range(1,10) %}<option>A0{{ i }}</option>{% endfor %}</select></label>
 <label>状态 <select id="state"><option value="">全部</option><option>CANDIDATE</option><option>CONFIRMED</option><option>INVALIDATED</option></select></label>
 <label>代码 <input id="code"></label><button id="filter">筛选</button></div>
-<div id="summary">{% if result.scan %}上次成功复盘：{{ result.scan.asof_date }}，命中股票 {{ result.scan.stock_count }}，信号 {{ result.scan.signal_count }}{% if result.scan.partial %} <span class="warn">（部分样本，不代表全市场）</span>{% endif %}{% else %}尚无保存结果，请点击“开始复盘”。{% endif %}</div>
+{% if result.error %}<p class="error">结果库读取失败：{{ result.error }}</p>{% endif %}<div id="summary">{% if result.scan %}上次成功复盘：{{ result.scan.asof_date }}，命中股票 {{ result.scan.stock_count }}，信号 {{ result.scan.signal_count }}{% if result.scan.partial %} <span class="warn">（部分样本，不代表全市场）</span>{% endif %}{% else %}尚无保存结果，请点击“开始复盘”。{% endif %}</div>
 <table><thead><tr><th>代码</th><th>规则</th><th>状态</th><th>日期</th><th>事件</th><th>详情</th></tr></thead><tbody id="rows"></tbody></table>
 <button id="prev">上一页</button><span id="pages">第 1/1 页</span><button id="next">下一页</button>
 <script>
