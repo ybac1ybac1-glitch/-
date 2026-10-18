@@ -14,8 +14,7 @@ def inspect_market(path):
     if not out["exists"]: out["error"]="行情数据库不存在"; return out
     c=None
     try:
-        c=ro(path)
-        tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
+        c=ro(path); tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
         if "daily" not in tables: out["error"]="daily表不存在"; return out
         row=c.execute("select max(trade_date),count(*),count(distinct ts_code) from daily").fetchone()
         out.update(max_trade_date=row[0],daily_rows=row[1],stock_count=row[2])
@@ -30,8 +29,7 @@ def inspect_results(path):
     if not out["exists"]: out["error"]="策略结果数据库不存在，无法验证策略结果"; return out
     c=None
     try:
-        c=ro(path)
-        tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
+        c=ro(path); tables={r[0] for r in c.execute("select name from sqlite_master where type='table'")}
         if "scans" not in tables: out["error"]="结果库scans表不存在"; return out
         cols={r[1] for r in c.execute("pragma table_info(scans)")}
         required={"id","asof_date","stock_count","signal_count","valid"}
@@ -44,34 +42,54 @@ def inspect_results(path):
         if c is not None: c.close()
     return out
 
-def smoke_v4(root):
-    """Only exercise V4 read-only routes; V3 routes are explicitly skipped."""
+def _check(status_code, condition, reason, body=""):
+    if status_code is None: return {"status":"FAIL","http_status":None,"reason":reason}
+    if status_code >= 500: return {"status":"FAIL","http_status":status_code,"reason":"网页返回服务器错误"}
+    if status_code != 200: return {"status":"FAIL","http_status":status_code,"reason":reason}
+    return {"status":"PASS" if condition else "UNVERIFIED","http_status":status_code,"reason":reason if condition else reason,"body_excerpt":body[:160]}
+
+def smoke_v4(root, market, results):
     sys.path.insert(0,str(Path(root)/"backend"))
-    import app as app_module
-    client=app_module.app.test_client()
+    try:
+        import app as app_module
+        client=app_module.app.test_client()
+    except Exception as exc:
+        return {"/strategy/a/v4":{"status":"FAIL","http_status":None,"reason":"无法加载Flask："+str(exc)},"/strategy/a/v4/stock/001246.SZ":{"status":"FAIL","http_status":None,"reason":"无法加载Flask："+str(exc)}}
     checks={}
-    for url in ("/strategy/a/v4","/strategy/a/v4/stock/001246.SZ"):
-        try:
-            response=client.get(url)
-            body=response.get_data(as_text=True)
-            checks[url]={"status_code":response.status_code,"has_scan_date":"2026-" in body or "复盘日期" in body,"has_ohlcv":any(x in body for x in ("开","成交量","交易日")),"empty_message":"暂无本地行情数据" in body}
-        except Exception as exc:
-            checks[url]={"status_code":None,"error":str(exc)}
-    checks["/"]="SKIPPED_READ_ONLY: 旧V3首页会调用可写数据初始化路径"
-    checks["/stock/001246.SZ"]="SKIPPED_READ_ONLY: 旧V3详情会调用可写数据初始化路径"
+    try:
+        response=client.get("/strategy/a/v4"); body=response.get_data(as_text=True)
+        scan=results.get("latest_scan")
+        checks["/strategy/a/v4"]=_check(response.status_code, bool(scan and str(scan.get("asof_date")) in body and "策略 A" in body),"未展示有效持久化扫描日期",body)
+    except Exception as exc: checks["/strategy/a/v4"]={"status":"FAIL","http_status":None,"reason":str(exc)}
+    try:
+        response=client.get("/strategy/a/v4/stock/001246.SZ"); body=response.get_data(as_text=True)
+        rows=int(market.get("001246_rows",0) or 0)
+        if rows==0:
+            condition="暂无本地行情数据" in body and response.status_code==200
+            checks["/strategy/a/v4/stock/001246.SZ"]=_check(response.status_code,condition,"001246.SZ无行情，页面应明确显示未验证状态",body)
+            if checks["/strategy/a/v4/stock/001246.SZ"]["status"]=="PASS": checks["/strategy/a/v4/stock/001246.SZ"]["status"]="UNVERIFIED"
+        else:
+            condition=response.status_code==200 and "交易日" in body and any(token in body for token in ("开","高","低","收")) and "成交量" in body
+            checks["/strategy/a/v4/stock/001246.SZ"]=_check(response.status_code,condition,"未展示可追溯日线 OHLCV 数据",body)
+    except Exception as exc: checks["/strategy/a/v4/stock/001246.SZ"]={"status":"FAIL","http_status":None,"reason":str(exc)}
+    checks["/"]="SKIPPED_READ_ONLY: 旧V3首页可能调用可写初始化路径"
+    checks["/stock/001246.SZ"]="SKIPPED_READ_ONLY: 旧V3详情可能调用可写初始化路径"
     return checks
 
 def write_report(root, report_path, smoke=False):
-    root=Path(root); market=root/"backend"/"market_cache.sqlite3"; results=root/"backend"/"strategy_a_results.sqlite3"
-    report={"time":datetime.now().isoformat(timespec="seconds"),"market":inspect_market(market),"results":inspect_results(results),"smoke":smoke_v4(root) if smoke else {"status":"NOT_RUN"},"urls":["http://127.0.0.1:8000/","http://127.0.0.1:8000/stock/001246.SZ","http://127.0.0.1:8000/strategy/a/v4","http://127.0.0.1:8000/strategy/a/v4/stock/001246.SZ"]}
+    root=Path(root); market=inspect_market(root/"backend"/"market_cache.sqlite3"); results=inspect_results(root/"backend"/"strategy_a_results.sqlite3")
+    smoke_result=smoke_v4(root,market,results) if smoke else {"status":"UNVERIFIED","reason":"未运行V4 smoke"}
+    states=[v.get("status") for v in smoke_result.values() if isinstance(v,dict)]
+    conclusion="FAIL" if market.get("error") or not market.get("exists") or "FAIL" in states else ("UNVERIFIED" if results.get("error") or "UNVERIFIED" in states else "PASS")
+    report={"time":datetime.now().isoformat(timespec="seconds"),"conclusion":conclusion,"market":market,"results":results,"smoke":smoke_result,"urls":["http://127.0.0.1:8000/","http://127.0.0.1:8000/stock/001246.SZ","http://127.0.0.1:8000/strategy/a/v4","http://127.0.0.1:8000/strategy/a/v4/stock/001246.SZ"]}
     p=Path(report_path); p.parent.mkdir(parents=True,exist_ok=True)
-    lines=["策略 A V4 本地只读验收报告",f"时间：{report['time']}"]
-    for name,data in (("行情库",report["market"]),("策略结果库",report["results"])):
+    lines=["策略 A V4 本地只读验收报告",f"时间：{report['time']}",f"汇总结论：{conclusion}"]
+    for name,data in (("行情库",market),("策略结果库",results)):
         lines.append(f"{name}：存在={data.get('exists')} 大小={data.get('size')} 字节")
         for k,v in data.items():
             if k not in ("exists","size"): lines.append(f"  {k}={v}")
-    lines.append("网页检查：")
-    for url,value in report["smoke"].items(): lines.append(f"  {url} => {value}")
+    lines.append("网页逐项检查：")
+    for url,value in smoke_result.items(): lines.append(f"  {url} => {value}")
     lines.append("验收 URL："); lines.extend("  "+u for u in report["urls"])
     p.write_text("\n".join(lines)+"\n",encoding="utf-8")
     return report
@@ -79,13 +97,7 @@ def write_report(root, report_path, smoke=False):
 if __name__=="__main__":
     ap=argparse.ArgumentParser(); ap.add_argument("--root",default=str(Path(__file__).parents[1])); ap.add_argument("--report"); ap.add_argument("--smoke",action="store_true"); args=ap.parse_args()
     report=write_report(args.root,args.report or str(Path(args.root)/"work"/"acceptance_report.txt"),args.smoke)
-    print("验收报告："+(args.report or str(Path(args.root)/"work"/"acceptance_report.txt")))
-    for name,data in (("行情库",report["market"]),("策略结果库",report["results"])):
-        print(f"{name}：存在={data.get('exists')}，大小={data.get('size')} 字节")
-        if data.get("error"): print("  "+data["error"])
-    if report["market"].get("exists"): print("行情最新交易日："+str(report["market"].get("max_trade_date"))+"，001246.SZ日线："+str(report["market"].get("001246_rows",0))+"条")
-    if report["results"].get("latest_scan"): print("最新有效扫描："+str(report["results"]["latest_scan"]))
-    if args.smoke: print("V4只读页面检查："+str(report["smoke"]))
-    market_ok=report["market"].get("exists") and not report["market"].get("error") and report["market"].get("max_trade_date")
-    result_ok=report["results"].get("latest_scan") is not None and not report["results"].get("error")
-    raise SystemExit(0 if market_ok and result_ok else (1 if not market_ok else 2))
+    print("汇总结论："+report["conclusion"])
+    if report["conclusion"]=="FAIL": raise SystemExit(1)
+    if report["conclusion"]=="UNVERIFIED": raise SystemExit(2)
+    raise SystemExit(0)
