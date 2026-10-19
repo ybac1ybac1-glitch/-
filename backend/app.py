@@ -116,10 +116,27 @@ def stock_detail(ts_code):
         frames={k:_clean_rows(v.tail(120).to_dict('records')) for k,v in frames.items()},
         ann=ann,news=news,error='；'.join(errors) if errors else '')
 
+def _v4_readonly_meta():
+    cache=os.path.join(os.path.dirname(__file__),'market_cache.sqlite3')
+    out={'raw_latest':'未知','validated_latest':'未知'}
+    if not os.path.exists(cache): return out
+    conn=None
+    try:
+        conn=sqlite3.connect('file:'+quote(os.path.abspath(cache).replace('\\','/'),safe='/:')+'?mode=ro',uri=True)
+        tables={r[0] for r in conn.execute("select name from sqlite_master where type='table'")}
+        if 'daily' in tables: out['raw_latest']=conn.execute('select max(trade_date) from daily').fetchone()[0] or '未知'
+        if 'history_date_tasks' in tables:
+            row=conn.execute("select max(trade_date) from history_date_tasks where status=? and ohlcv_state=? and turnover_state=?",('TURNOVER_COMPLETE','OHLCV_COMPLETE','TURNOVER_COMPLETE')).fetchone()
+            out['validated_latest']=row[0] or '未知'
+    except Exception: pass
+    finally:
+        if conn is not None: conn.close()
+    return out
+
 @app.get('/strategy/a/v4')
 def strategy_a_v4():
     path=os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3')
-    return render_template('strategy_a_v4.html',status=a_web_status(),result=a_web_results(path))
+    result=a_web_results(path)\n    meta=_v4_readonly_meta()\n    return render_template('strategy_a_v4.html',status=a_web_status(),result=result,meta=meta)
 @app.post('/strategy/a/v4/start')
 def strategy_a_v4_start():
     from flask import request
