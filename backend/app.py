@@ -7,10 +7,12 @@ from news import fetch as fetch_news, analyze as news_analyze
 from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
 from validation import validate_cache,start as start_validation,status as validation_status,get_results
-from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results\nfrom auto_refresh import start_scheduler
+from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results
+from auto_refresh import start_scheduler
 import os, sqlite3, json, math
 import pandas as pd
-app=Flask(__name__)\nstart_scheduler()
+app=Flask(__name__)
+start_scheduler()
 
 def _clean_value(value):
     try:
