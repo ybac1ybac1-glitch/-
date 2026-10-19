@@ -136,7 +136,9 @@ def _v4_readonly_meta():
 @app.get('/strategy/a/v4')
 def strategy_a_v4():
     path=os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3')
-    result=a_web_results(path)\n    meta=_v4_readonly_meta()\n    return render_template('strategy_a_v4.html',status=a_web_status(),result=result,meta=meta)
+    result=a_web_results(path)
+    meta=_v4_readonly_meta()
+    return render_template('strategy_a_v4.html',status=a_web_status(),result=result,meta=meta)
 @app.post('/strategy/a/v4/start')
 def strategy_a_v4_start():
     from flask import request
