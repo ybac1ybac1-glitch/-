@@ -15,5 +15,5 @@ if ($existing) { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false }
 $action = New-ScheduledTaskAction -Execute $pythonw -Argument "app.py" -WorkingDirectory $backend
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Days 30)
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "A股策略A V4 local Flask and after-close refresh" | Out-Null
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "AA V4 local Flask and after-close refresh" | Out-Null
 Write-Host "Installed. It starts after next logon."
