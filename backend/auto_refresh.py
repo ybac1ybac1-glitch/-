@@ -18,7 +18,7 @@ def run_once():
     deadline=time.time()+3600
     while data.status().get("running") and time.time()<deadline: time.sleep(1)
     latest=data.latest_trade_date()
-    if not latest: return {"status":"UNVERIFIED","reason":"没有可用最新行情"}
+    if not latest: _state.update(status="UNVERIFIED",last_error="没有可用最新行情"); return {"status":"UNVERIFIED","reason":"没有可用最新行情"}
     result=verify_cached_date(data.DB_PATH,latest)
     if result.get("status")!="TURNOVER_COMPLETE":
         return {"status":"UNVERIFIED","trade_date":latest,"reason":result.get("error") or result.get("status")}
@@ -38,5 +38,5 @@ def start_scheduler():
     _thread.start()
     return _thread
 
-def stop_scheduler():
+def status(): return dict(_state)\n\ndef stop_scheduler():
     _stop.set()
