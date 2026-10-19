@@ -153,7 +153,10 @@ def strategy_a_v4_start():
     result,code=start_a_web(data.DB_PATH,os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3'),q.get('asof_date'),max_stocks=max_stocks)
     return jsonify(result),code
 @app.get('/strategy/a/v4/status')
-def strategy_a_v4_status():\n    payload=a_web_status(); payload['auto_refresh']=auto_status(); return jsonify(payload)
+def strategy_a_v4_status():
+    payload=a_web_status()
+    payload['auto_refresh']=auto_status()
+    return jsonify(payload)
 
 @app.get('/strategy/a/v4/stock/<ts_code>')
 def strategy_a_v4_stock(ts_code):
