@@ -1,5 +1,6 @@
 import threading, sqlite3
-from datetime import datetime,timedelta\nfrom zoneinfo import ZoneInfo
+from datetime import datetime,timedelta
+from zoneinfo import ZoneInfo
 import data
 _HISTORY_THREAD=None
 REQ={'ts_code','trade_date','open','high','low','close','pre_close','change','pct_chg','vol','amount'}
