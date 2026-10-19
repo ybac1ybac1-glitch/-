@@ -8,7 +8,7 @@ from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
 from validation import validate_cache,start as start_validation,status as validation_status,get_results
 from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results
-from auto_refresh import start_scheduler
+from auto_refresh import start_scheduler,status as auto_status
 import os, sqlite3, json, math
 import pandas as pd
 app=Flask(__name__)
@@ -153,7 +153,7 @@ def strategy_a_v4_start():
     result,code=start_a_web(data.DB_PATH,os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3'),q.get('asof_date'),max_stocks=max_stocks)
     return jsonify(result),code
 @app.get('/strategy/a/v4/status')
-def strategy_a_v4_status(): return jsonify(a_web_status())
+def strategy_a_v4_status():\n    payload=a_web_status(); payload['auto_refresh']=auto_status(); return jsonify(payload)
 
 @app.get('/strategy/a/v4/stock/<ts_code>')
 def strategy_a_v4_stock(ts_code):
