@@ -1,6 +1,6 @@
-<!doctype html><meta charset="utf-8"><title>策略 A · {{ ts_code }}</title>
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>策略 A · {{ ts_code }}</title><link rel="stylesheet" href="/static/v4.css">
 <style>body{font-family:Arial;margin:24px;color:#222}.card{background:#f4f6f8;padding:12px;margin:12px 0}.toolbar button{margin-right:6px;padding:6px 12px}.chart{width:100%;max-width:1100px;height:460px;border:1px solid #ddd}.table{border-collapse:collapse;width:100%}.table td,.table th{border:1px solid #ddd;padding:6px}.legend{font-size:13px;color:#555}.warn{color:#a65b00}</style>
-<h1>策略 A · {{ ts_code }} 图形化复盘</h1><p><a href="/strategy/a/v4">返回策略 A 复盘</a></p>
+<p class="eyebrow">STRATEGY A / STOCK DETAIL</p><h1>策略 A · {{ ts_code }} 图形化复盘</h1><p><a href="/strategy/a/v4">返回策略 A 复盘</a></p>
 <div class="card">数据来源：{{ source|default("本地 market_cache.sqlite3（只读）") }}；不调用 Tushare、公告或新闻接口，不重新计算策略。{% if bars %} 数据范围：{{ bars[0].trade_date }} 至 {{ bars[-1].trade_date }}。{% endif %}</div>{% if empty_message %}<p class="warn">{{ empty_message }}，无法绘制 K 线。</p>{% endif %}
 <div class="toolbar"><button data-days="60">最近 60 日</button><button data-days="120">最近 120 日</button><button data-days="250">最近 250 日</button><label><input type="checkbox" data-ma="5" checked>MA5</label><label><input type="checkbox" data-ma="10" checked>MA10</label><label><input type="checkbox" data-ma="20" checked>MA20</label><span id="range">当前 120 日</span></div><div id="ohlc" class="card">加载中…</div>
 <canvas id="chart" class="chart" width="1100" height="460"></canvas><p class="legend">红色为上涨、绿色为下跌；上方为 OHLC 蜡烛图，下方为成交量。鼠标悬停可查看交易日和 OHLCV。</p>
