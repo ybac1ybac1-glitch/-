@@ -12,6 +12,10 @@ _state={"status":"IDLE","last_error":"","last_run":"","next_retry":""}
 _last_scanned_date=None
 
 def run_once():
+    now=datetime.now(ZoneInfo("Asia/Shanghai"))
+    if now.hour < 15:
+        _state.update(status="WAITING_CLOSE",last_error="等待北京时间15:00收盘")
+        return {"status":"WAITING_CLOSE"}
     global _last_scanned_date
     _state.update(status="UPDATING",last_error="")
     data.start_update(max_days=5)
