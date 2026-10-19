@@ -24,3 +24,14 @@ def test_auto_refresh_starts_scan_only_after_complete(monkeypatch):
     result=auto_refresh.run_once()
     assert result["status"]=="SCAN_STARTED"
     assert calls==["update","scan"]
+
+
+def test_refresh_waits_until_after_three_pm_independent_of_browser(monkeypatch):
+    class FakeDateTime:
+        @classmethod
+        def now(cls, tz=None):
+            from datetime import datetime
+            return datetime(2026,10,19,14,59,tzinfo=tz)
+    monkeypatch.setattr(auto_refresh,"datetime",FakeDateTime)
+    result=auto_refresh.run_once()
+    assert result["status"]=="WAITING_CLOSE"
