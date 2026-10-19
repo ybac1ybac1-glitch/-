@@ -30,12 +30,9 @@ def test_auto_refresh_starts_scan_only_after_complete(monkeypatch):
     monkeypatch.setattr(auto_refresh.data,"_calendar",lambda n:["20261016"])
     monkeypatch.setattr(auto_refresh.data,"latest_trade_date",lambda:"20261016")
     monkeypatch.setattr(auto_refresh,"verify_cached_date",lambda *a,**k: {"status":"TURNOVER_COMPLETE","trade_date":"20261016"})
-    monkeypatch.setattr(auto_refresh,"scan_results",lambda *a,**k: {"scan":None})
     monkeypatch.setattr(auto_refresh,"start_scan",lambda *a,**k: (calls.append("scan") or ({"status":"RUNNING"},202)))
-    monkeypatch.setattr(auto_refresh,"scan_status",lambda: {"status":"COMPLETED"})
-    monkeypatch.setattr(auto_refresh,"scan_results",lambda *a,**k: {"scan":{"asof_date":"20261016"}})
     result=auto_refresh.run_once()
-    assert result["status"]=="COMPLETED"
+    assert result["status"]=="SCAN_STARTED"
     assert calls==["update","scan"]
 
 def test_refresh_waits_until_after_three_pm_independent_of_browser(monkeypatch):
