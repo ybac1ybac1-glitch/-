@@ -1,21 +1,16 @@
-# Windows 一键真实数据验收
+# Windows 一键运行
 
-如果已经用独立工具写入了新的日线（例如 20261016），先双击：
+首次安装（只需一次）：
 
-\`backend\\verify_latest_cached_date.cmd\`
+1. 确保已在项目目录配置用户环境变量 \`TUSHARE_TOKEN\`；
+2. 双击 \`backend\\install_autostart.cmd\`；
+3. 在确认提示中输入 \`YES\`；
+4. 退出并重新登录 Windows。
 
-该脚本：
+安装使用当前用户的任务计划，不需要管理员权限。任务名称是 \`AStockStrategyA-V4\`，同名任务会先清理后重新注册，策略设置为 \`IgnoreNew\`，避免重复实例。Token 不写入任务命令、日志或仓库。
 
-1. 自动识别 daily 最大交易日；
-2. 在创建不覆盖旧备份的新备份后检查该日 OHLCV 和换手率；
-3. 只有真实数据完整时才写入 \`history_date_tasks\` 的 \`OHLCV_COMPLETE/ TURNOVER_COMPLETE\`；
-4. 缺行情、异常 OHLCV 或缺换手率时写入 PARTIAL_MISSING/FAILED，绝不伪造 COMPLETE；
-5. 不下载历史行情，不覆盖行情行，不调用策略扫描。
+登录后任务使用 \`pythonw.exe\` 在后台启动 Flask，并启用自动刷新。它会检查最近交易日、增量更新缺失行情、验证 OHLCV/换手率、成功后启动同日期策略 A 扫描；失败会记录页面可见状态并等待下一次重试。电脑关机期间不会运行。
 
-验证成功后双击：
+查看任务状态：双击 \`backend\\status_autostart.cmd\`。取消自启动：双击 \`backend\\uninstall_autostart.cmd\`。
 
-\`backend\\windows_acceptance.cmd\`
-
-它会读取完整性状态，运行 V4 只读 smoke check，并启动 Flask。V4 扫描会选择最新经过完整性验证且 daily 中存在的交易日；如果新日期未完成，页面会明确保持旧的完整日期或显示未验证状态，不会把旧日期冒充新行情。
-
-两个脚本均要求数据库路径可访问，支持中文和空格路径；报告写入 \`work\\acceptance_report.txt\`。
+原始行情库和结果库不会被脚本删除、覆盖、重建或迁移。首次真实数据验证仍建议先双击 \`verify_latest_cached_date.cmd\` 生成独立备份，再使用 \`windows_acceptance.cmd\` 检查网页。
