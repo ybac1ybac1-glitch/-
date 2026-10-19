@@ -1,7 +1,7 @@
 """Opt-in automatic after-close refresh loop."""
 from __future__ import annotations
 import os,threading,time
-from datetime import datetime
+from datetime import datetime\nfrom zoneinfo import ZoneInfo
 import data
 from history_extension import verify_cached_date
 from strategy_a_store import start as start_scan
