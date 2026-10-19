@@ -16,7 +16,7 @@ def _retry(reason,target=""):
     return {"status":"STALE","target_date":target,"reason":reason,"next_retry":nxt}
 
 def _target_date(now):
-    calendar=data._calendar(10) if data.pro else []
+    calendar=data._calendar(10)
     dates=[str(x) for x in calendar if str(x)<=now.strftime("%Y%m%d")]
     return max(dates) if dates else ""
 
