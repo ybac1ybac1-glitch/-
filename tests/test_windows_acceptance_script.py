@@ -8,4 +8,6 @@ def test_windows_acceptance_cmd_is_ascii_and_has_safe_paths():
     assert 'cd /d "%~dp0"' in text
     assert 'start "Strategy A Flask" /D "%~dp0"' in text
     assert "%ERRORLEVEL%" in text
+    assert "\\n" not in text
+    assert "AUTO_REFRESH_INTERVAL_SECONDS=300" in text
     assert "mode=ro" not in text
