@@ -1,5 +1,6 @@
 import os, sqlite3, threading, time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import pandas as pd
 try: import tushare as ts
 except Exception: ts=None
@@ -38,7 +39,10 @@ def _upsert(c,frame):
 
 def _calendar(limit=120):
  if not pro: return []
- end=datetime.now().strftime('%Y%m%d'); start=(datetime.now()-timedelta(days=240)).strftime('%Y%m%d')
+ # Tushare dates are exchange dates; always derive the window in China time.
+ # This keeps the result stable when the host Windows timezone is elsewhere.
+ now=datetime.now(ZoneInfo("Asia/Shanghai"))
+ end=now.strftime('%Y%m%d'); start=(now-timedelta(days=240)).strftime('%Y%m%d')
  cal=_call('trade_cal',exchange='SSE',start_date=start,end_date=end,is_open='1')
  if cal is None or cal.empty or 'cal_date' not in cal: return []
  return sorted(cal['cal_date'].astype(str).tolist())[-limit:]
