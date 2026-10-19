@@ -9,3 +9,11 @@ def test_autostart_scripts_are_ascii_and_single_instance_safe():
     assert "AStockStrategyA-V4" in install
     assert "MultipleInstances IgnoreNew" in install
     assert "Read-Host" in install
+
+
+def test_launcher_sets_auto_refresh_and_five_minute_interval():
+    launcher=(Path(__file__).parents[1]/"backend"/"windows_autostart_launcher.pyw").read_text()
+    assert "AUTO_REFRESH_ENABLED" in launcher and '"1"' in launcher
+    assert "AUTO_REFRESH_INTERVAL_SECONDS" in launcher and '"300"' in launcher
+    ps=(Path(__file__).parents[1]/"backend"/"windows_autostart_install.ps1").read_text()
+    assert "windows_autostart_launcher.pyw" in ps and "-Force" in ps
