@@ -7,13 +7,19 @@ if (-not $pythonw) { $pythonw = (Get-Command python.exe -ErrorAction Stop).Sourc
 Write-Host "Task: $taskName"
 Write-Host "Project: $project"
 Write-Host "User: $env:USERDOMAIN\$env:USERNAME"
-Write-Host "Action: $pythonw app.py"
+Write-Host "Action: $pythonw windows_autostart_launcher.pyw"
 $answer = Read-Host "Register this task for the current user at logon? Type YES"
 if ($answer -ne "YES") { Write-Host "Cancelled"; exit 2 }
 $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($existing) { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false }
-$action = New-ScheduledTaskAction -Execute $pythonw -Argument "app.py" -WorkingDirectory $backend
+$oldXml = $null
+if ($existing) { $oldXml = Export-ScheduledTask -TaskName $taskName }
+$action = New-ScheduledTaskAction -Execute $pythonw -Argument "windows_autostart_launcher.pyw" -WorkingDirectory $backend
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Days 30)
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "AA V4 local Flask and after-close refresh" | Out-Null
+try {
+  Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "AStockStrategyA-V4 local Flask and after-close refresh" -Force | Out-Null
+} catch {
+  if ($oldXml) { Register-ScheduledTask -TaskName $taskName -Xml $oldXml -Force | Out-Null }
+  throw
+}
 Write-Host "Installed. It starts after next logon."
