@@ -1,5 +1,5 @@
 import threading, sqlite3
-from datetime import datetime,timedelta
+from datetime import datetime,timedelta\nfrom zoneinfo import ZoneInfo
 import data
 _HISTORY_THREAD=None
 REQ={'ts_code','trade_date','open','high','low','close','pre_close','change','pct_chg','vol','amount'}
@@ -7,7 +7,7 @@ STATES={'OHLCV_COMPLETE','TURNOVER_COMPLETE','PARTIAL_MISSING','PENDING_VERIFY',
 def _ensure(c):
  c.execute('''CREATE TABLE IF NOT EXISTS history_date_tasks(trade_date TEXT PRIMARY KEY, ohlcv_state TEXT NOT NULL, turnover_state TEXT NOT NULL, status TEXT NOT NULL, ohlcv_rows INTEGER DEFAULT 0, turnover_rows INTEGER DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL)''');c.commit()
 def _target_dates(limit=360):
- end=datetime.now(); cal=data._call('trade_cal',exchange='SSE',start_date=(end-timedelta(days=700)).strftime('%Y%m%d'),end_date=end.strftime('%Y%m%d'),is_open='1')
+ end=datetime.now(ZoneInfo("Asia/Shanghai")); cal=data._call('trade_cal',exchange='SSE',start_date=(end-timedelta(days=700)).strftime('%Y%m%d'),end_date=end.strftime('%Y%m%d'),is_open='1')
  if cal is None or cal.empty or 'cal_date' not in cal:data._status['history_error']='trade_cal空返回';return []
  dates=sorted(set(cal.cal_date.astype(str)));data._status['history_calendar_available']=len(dates)
  if len(dates)<limit:data._status['history_error']=f'交易日历仅返回{len(dates)}日，少于目标{limit}日';return dates
