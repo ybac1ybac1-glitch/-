@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions
-set AUTO_REFRESH_ENABLED=1\nset AUTO_REFRESH_INTERVAL_SECONDS=300
+set AUTO_REFRESH_ENABLED=1
+set AUTO_REFRESH_INTERVAL_SECONDS=300
 cd /d "%~dp0"
 echo Running read-only database and V4 smoke checks...
 python "%~dp0acceptance_check.py" --root "%~dp0.." --report "%~dp0..\work\acceptance_report.txt" --smoke
