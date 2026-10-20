@@ -8,7 +8,7 @@ from history_extension import verify_cached_date
 from strategy_a_store import start as start_scan,status as scan_status,results as scan_results
 _thread=None
 _stop=threading.Event()
-_state={"status":"IDLE","target_date":"","raw_latest":"","validated_latest":"","persisted_scan_date":"","last_error":"","last_run":"","next_retry":""}
+_state={"status":"IDLE","target_date":"","raw_latest":"","validated_latest":"","persisted_scan_date":"","last_error":"","last_run":"","next_retry":"","scan_started":False}
 
 def _retry(reason,target=""):
     nxt=(datetime.now(ZoneInfo("Asia/Shanghai"))+timedelta(minutes=5)).isoformat()
@@ -22,18 +22,28 @@ def _target_date(now):
 
 def run_once():
     now=datetime.now(ZoneInfo("Asia/Shanghai"))
-    if now.hour < 15: _state.update(status="WAITING_CLOSE"); return {"status":"WAITING_CLOSE"}
+    if now.hour < 15:
+        _state.update(status="WAITING_CLOSE")
+        return {"status":"WAITING_CLOSE"}
     target=_target_date(now)
     if not target: return _retry("无法取得真实A股交易日历")
+    result_path=os.path.join(data.BASE,"strategy_a_results.sqlite3")
+    if _state.get("status")=="SCANNING" and _state.get("target_date")==target:
+        ss=scan_status()
+        if ss.get("status")=="RUNNING":
+            return {"status":"SCANNING","target_date":target}
+        if ss.get("status")=="FAILED":
+            return _retry("策略A扫描失败："+str(ss.get("error") or "未知错误"),target)
+        saved=scan_results(result_path,1,1).get("scan")
+        if ss.get("status")!="COMPLETED" or not saved or str(saved.get("asof_date"))!=target or bool(saved.get("partial")):
+            return _retry("策略A扫描未形成与目标日一致的有效结果",target)
+        _state.update(status="COMPLETED",persisted_scan_date=target,last_run=datetime.now().isoformat(),scan_started=False)
+        return {"status":"COMPLETED","target_date":target}
     _state.update(status="UPDATING",target_date=target,last_error="")
-    start_result=data.start_update(max_days=10)
+    data.start_update(max_days=10)
     time.sleep(.2)
-    if data.status().get("task_rejected") and not data.status().get("running"):
-        return _retry("行情更新任务未启动",target)
-    deadline=time.time()+3600
-    while time.time()<deadline and data.status().get("running"): time.sleep(1)
     ds=data.status()
-    if ds.get("running"): return _retry("行情更新超时",target)
+    if ds.get("running"): return {"status":"UPDATING","target_date":target}
     if ds.get("last_error"): return _retry("行情更新失败："+str(ds["last_error"]),target)
     raw=data.latest_trade_date()
     _state["raw_latest"]=raw
@@ -41,14 +51,16 @@ def run_once():
     integrity=verify_cached_date(data.DB_PATH,target)
     if integrity.get("status")!="TURNOVER_COMPLETE": return _retry(integrity.get("error") or "完整性未通过",target)
     _state["validated_latest"]=target
-    result_path=os.path.join(data.BASE,"strategy_a_results.sqlite3")
     saved=scan_results(result_path,1,1).get("scan")
-    if saved and str(saved.get("asof_date"))==target:
-        _state.update(status="COMPLETED",persisted_scan_date=target,last_run=datetime.now().isoformat())
+    if saved and str(saved.get("asof_date"))==target and not bool(saved.get("partial")):
+        _state.update(status="COMPLETED",persisted_scan_date=target,last_run=datetime.now().isoformat(),scan_started=False)
         return {"status":"COMPLETED","target_date":target}
     response=start_scan(data.DB_PATH,result_path,target)
-    if isinstance(response,tuple) and len(response)>1 and response[1]!=202: return _retry("策略A扫描未启动",target)
-    _state.update(status="SCANNING",last_run=datetime.now().isoformat())
+    if isinstance(response,tuple):
+        if len(response)<2 or response[1]!=202: return _retry("策略A扫描未启动",target)
+    elif isinstance(response,dict) and response.get("status") not in ("RUNNING","SCANNING"):
+        return _retry("策略A扫描未启动",target)
+    _state.update(status="SCANNING",last_run=datetime.now().isoformat(),scan_started=True)
     return {"status":"SCANNING","target_date":target}
 
 def _loop(interval):
