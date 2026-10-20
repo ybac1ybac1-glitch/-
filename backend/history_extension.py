@@ -83,16 +83,25 @@ def verify_cached_date(db_path, trade_date, backup_path=None):
         cols={r[1] for r in c.execute("PRAGMA table_info(daily)")}
         required=REQ|{"turnover_rate"}; missing=required-cols
         if missing: raise ValueError("daily缺少字段:"+",".join(sorted(missing)))
-        rows=c.execute("SELECT open,high,low,close,vol,amount,turnover_rate FROM daily WHERE trade_date=?",(day,)).fetchall()
-        invalid=sum(1 for row in rows if any(v is None for v in row[:6]) or float(row[0])<=0 or float(row[3])<=0 or float(row[1])<float(row[2]) or float(row[4])<0 or float(row[5])<0)
-        missing_turnover=sum(1 for row in rows if row[6] is None)
+        rows=c.execute("SELECT ts_code,open,high,low,close,vol,amount,turnover_rate FROM daily WHERE trade_date=?",(day,)).fetchall()
+        invalid=sum(1 for row in rows if any(v is None for v in row[1:7]) or float(row[1])<=0 or float(row[4])<=0 or float(row[2])<float(row[3]) or float(row[5])<0 or float(row[6])<0)
+        missing_turnover=sum(1 for row in rows if row[7] is None)
+        try:
+            expected={str(x) for x in data.get_stock_list()['ts_code'].dropna().astype(str) if str(x)}
+        except Exception:
+            expected=set()
+        observed={str(row[0]) for row in rows}
+        valid_codes={str(row[0]) for row in rows if not any(v is None for v in row[1:7])}
+        coverage=len(valid_codes & expected) if expected else 0
         if not rows: status,error,ohlcv,turnover="FAILED","无该日期行情","PENDING_VERIFY","PENDING_VERIFY"
+        elif not expected: status,error,ohlcv,turnover="UNVERIFIED","缺少可信股票覆盖基准","OHLCV_COMPLETE","PENDING_VERIFY"
+        elif not expected.issubset(valid_codes): status,error,ohlcv,turnover="PARTIAL_MISSING",f"行情覆盖{coverage}/{len(expected)}，缺失股票需补齐","OHLCV_COMPLETE","PARTIAL_MISSING"
         elif invalid: status,error,ohlcv,turnover="PARTIAL_MISSING",f"异常OHLCV行{invalid}","PENDING_VERIFY","PENDING_VERIFY"
         elif missing_turnover: status,error,ohlcv,turnover="PARTIAL_MISSING",f"缺少换手率{missing_turnover}行","OHLCV_COMPLETE","PARTIAL_MISSING"
         else: status,error,ohlcv,turnover="TURNOVER_COMPLETE","", "OHLCV_COMPLETE","TURNOVER_COMPLETE"
         c.execute("INSERT OR REPLACE INTO history_date_tasks VALUES(?,?,?,?,?,?,?,?)",(day,ohlcv,turnover,status,len(rows),len(rows)-missing_turnover,error,datetime.now().isoformat()))
         c.commit()
-        return {"status":status,"trade_date":day,"ohlcv_rows":len(rows),"turnover_rows":len(rows)-missing_turnover,"missing_turnover":missing_turnover,"error":error}
+        return {"status":status,"trade_date":day,"ohlcv_rows":len(rows),"turnover_rows":len(rows)-missing_turnover,"missing_turnover":missing_turnover,"coverage":coverage,"expected_stocks":len(expected),"error":error}
     except Exception:
         c.rollback(); raise
     finally: c.close()
