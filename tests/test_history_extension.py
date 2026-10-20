@@ -67,3 +67,24 @@ def test_verify_cached_date_empty_baseline_is_unverified(monkeypatch):
  monkeypatch.setattr(data,'get_stock_list',lambda: pd.DataFrame(columns=['ts_code']))
  result=history_extension.verify_cached_date(data.DB_PATH,'20240102')
  assert result['status']=='UNVERIFIED'
+
+def test_update_refetches_partial_existing_day_and_preserves_fields(monkeypatch):
+ import data
+ data.DB_PATH=tempfile.mktemp(suffix='.sqlite3')
+ c=data._db()
+ old={'ts_code':'X','trade_date':'20240102','open':1,'high':2,'low':.5,'close':1.5,'pre_close':1.4,'change':.1,'pct_chg':7,'vol':10,'amount':100,'turnover_rate':9}
+ data._upsert(c,pd.DataFrame([old])); c.commit(); c.close()
+ calls=[]
+ frame=pd.DataFrame([
+  {**old,'turnover_rate':None},
+  {**old,'ts_code':'Y','close':2.5,'turnover_rate':None},
+ ])
+ monkeypatch.setattr(data,'pro',object())
+ monkeypatch.setattr(data,'_calendar',lambda n:['20240102'])
+ monkeypatch.setattr(data,'_expected_codes',lambda: {'X','Y'})
+ monkeypatch.setattr(data,'_call',lambda method,**kwargs: (calls.append((method,kwargs)) or (frame.copy() if method=='daily' else pd.DataFrame([{'ts_code':'X','trade_date':'20240102','turnover_rate':3},{'ts_code':'Y','trade_date':'20240102','turnover_rate':4}]))) )
+ data._run_update(1)
+ c=data._db()
+ assert ('daily',{'trade_date':'20240102'}) in calls
+ assert c.execute("select count(*) from daily where trade_date='20240102'").fetchone()[0]==2
+ assert c.execute("select close,turnover_rate from daily where ts_code='X'").fetchone()==(1.5,9)
