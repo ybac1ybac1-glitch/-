@@ -1,6 +1,7 @@
 """Persistent Strategy A V4 result store and background scan."""
 from __future__ import annotations
 import os,sqlite3,threading,json
+from urllib.parse import quote
 from datetime import datetime
 from validation import validate_cache
 LOCK=threading.Lock()
@@ -16,6 +17,10 @@ def _db(path):
     c.execute("CREATE INDEX IF NOT EXISTS ix_signals_scan_rule ON signals(scan_id,rule_id,state)")
     c.commit()
     return c
+
+def _ro(path):
+    absolute=os.path.abspath(os.fspath(path)).replace("\\", "/")
+    return sqlite3.connect("file:"+quote(absolute,safe="/:\\")+ "?mode=ro",uri=True)
 
 def _latest(c):
     return c.execute("SELECT * FROM scans WHERE valid=1 ORDER BY id DESC LIMIT 1").fetchone()
@@ -67,8 +72,14 @@ def status(): return dict(STATE)
 
 def results(result_path,page=1,page_size=100,rule_id=None,state=None,code=None):
     if page<1 or page_size<1 or page_size>1000: raise ValueError("invalid paging")
-    c=_db(result_path)
     try:
+        c=_ro(result_path)
+    except (sqlite3.Error,OSError):
+        return {"scan":None,"page":page,"page_size":page_size,"total_matches":0,"total_signals":0,"returned_matches":0,"items":[],"error":"策略 A 结果库不存在或不可读"}
+    try:
+        tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "scans" not in tables or "signals" not in tables:
+            return {"scan":None,"page":page,"page_size":page_size,"total_matches":0,"total_signals":0,"returned_matches":0,"items":[],"error":"结果库缺少 scans/signals 表"}
         s=_latest(c)
         if not s:
             return {"scan":None,"page":page,"page_size":page_size,"total_matches":0,"total_signals":0,"returned_matches":0,"items":[]}

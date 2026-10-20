@@ -8,8 +8,29 @@ from signals import migrate, list_signals, resonance
 from history_extension import start as start_history_extend
 from validation import validate_cache,start as start_validation,status as validation_status,get_results
 from strategy_a_store import start as start_a_web,status as a_web_status,results as a_web_results
-import os, sqlite3, json
+from auto_refresh import start_scheduler,status as auto_status
+import os, sqlite3, json, math
+import pandas as pd
 app=Flask(__name__)
+start_scheduler()
+
+def _clean_value(value):
+    try:
+        if value is None:
+            return None
+        if hasattr(value, "item"):
+            value = value.item()
+        if isinstance(value, (float, int)) and not math.isfinite(float(value)):
+            return None
+        missing = pd.isna(value)
+        if isinstance(missing, bool) and missing:
+            return None
+    except Exception:
+        return None
+    return value
+
+def _clean_rows(rows):
+    return [{k: _clean_value(v) for k, v in row.items()} for row in rows]
 
 def _p1rows(strategy=None):
     c=sqlite3.connect(__import__('data').DB_PATH)
@@ -18,7 +39,7 @@ def _p1rows(strategy=None):
 @app.route('/')
 def index():
     df,error=get_stock_data(); market=assess(daily=df) if not df.empty else {'state':'无法判断','factor':0,'trend':0,'breadth':0,'amount_change':0,'reason':'市场环境数据缺失'}
-    stocks=filter_stock(df,market,history_loader=lambda code:get_history(code)).to_dict('records') if not df.empty else []
+    stocks=_clean_rows(filter_stock(df,market,history_loader=lambda code:get_history(code)).to_dict('records')) if not df.empty else []
     return render_template('index.html',stocks=stocks,priority_stocks=[x for x in stocks if x.get('priority')==1],market=market,error=error,stats=status())
 @app.post('/admin/history-extend')
 def history_extend(): return jsonify(start_history_extend(360))
@@ -78,13 +99,48 @@ def data_health():
 def stock_detail(ts_code):
     stocks=get_stock_list(); hit=stocks[stocks.ts_code.astype(str)==str(ts_code)]
     if hit.empty: abort(404)
-    info=hit.iloc[0].to_dict(); frames={'daily':get_history(ts_code,'daily'),'weekly':get_history(ts_code,'weekly'),'monthly':get_history(ts_code,'monthly')}
-    from wyckoff import analyze
-    return render_template('detail.html',stock=info,analysis=analyze(frames['daily']),frames={k:v.tail(120).to_dict('records') for k,v in frames.items()},ann=ann_analyze(fetch_ann(ts_code,pro)),news=news_analyze(fetch_news(ts_code,pro)),error='')
+    info={k:_clean_value(v) for k,v in hit.iloc[0].to_dict().items()}
+    frames={}; errors=[]
+    for kind in ('daily','weekly','monthly'):
+        try: frames[kind]=get_history(ts_code,kind)
+        except Exception as exc:
+            frames[kind]=__import__('pandas').DataFrame(); errors.append(f'{kind}: {exc}')
+    try:
+        from wyckoff import analyze
+        analysis=analyze(frames['daily'])
+    except Exception as exc:
+        analysis={'stage':'数据不足','score':None,'reason':'无法生成分析：'+str(exc)}
+    try: ann=ann_analyze(fetch_ann(ts_code,pro))
+    except Exception: ann={'sentiment':'数据不足','score':None,'items':[]}
+    try: news=news_analyze(fetch_news(ts_code,pro))
+    except Exception: news={'sentiment':'数据不足','score':None,'items':[]}
+    return render_template('detail.html',stock=info,analysis=analysis,
+        frames={k:_clean_rows(v.tail(120).to_dict('records')) for k,v in frames.items()},
+        ann=ann,news=news,error='；'.join(errors) if errors else '')
+
+def _v4_readonly_meta():
+    cache=os.path.join(os.path.dirname(__file__),'market_cache.sqlite3')
+    out={'raw_latest':'未知','validated_latest':'未知'}
+    if not os.path.exists(cache): return out
+    conn=None
+    try:
+        conn=sqlite3.connect('file:'+quote(os.path.abspath(cache).replace('\\','/'),safe='/:')+'?mode=ro',uri=True)
+        tables={r[0] for r in conn.execute("select name from sqlite_master where type='table'")}
+        if 'daily' in tables: out['raw_latest']=conn.execute('select max(trade_date) from daily').fetchone()[0] or '未知'
+        if 'history_date_tasks' in tables:
+            row=conn.execute("select max(trade_date) from history_date_tasks where status=? and ohlcv_state=? and turnover_state=?",('TURNOVER_COMPLETE','OHLCV_COMPLETE','TURNOVER_COMPLETE')).fetchone()
+            out['validated_latest']=row[0] or '未知'
+    except Exception: pass
+    finally:
+        if conn is not None: conn.close()
+    return out
+
 @app.get('/strategy/a/v4')
 def strategy_a_v4():
     path=os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3')
-    return render_template('strategy_a_v4.html',status=a_web_status(),result=a_web_results(path))
+    result=a_web_results(path)
+    meta=_v4_readonly_meta()
+    return render_template('strategy_a_v4.html',status=a_web_status(),result=result,meta=meta)
 @app.post('/strategy/a/v4/start')
 def strategy_a_v4_start():
     from flask import request
@@ -97,7 +153,10 @@ def strategy_a_v4_start():
     result,code=start_a_web(data.DB_PATH,os.path.join(os.path.dirname(__file__),'strategy_a_results.sqlite3'),q.get('asof_date'),max_stocks=max_stocks)
     return jsonify(result),code
 @app.get('/strategy/a/v4/status')
-def strategy_a_v4_status(): return jsonify(a_web_status())
+def strategy_a_v4_status():
+    payload=a_web_status()
+    payload['auto_refresh']=auto_status()
+    return jsonify(payload)
 
 @app.get('/strategy/a/v4/stock/<ts_code>')
 def strategy_a_v4_stock(ts_code):
@@ -109,7 +168,11 @@ def strategy_a_v4_stock(ts_code):
     if os.path.exists(cache_path):
         c=ro(cache_path)
         try:
-            rows=c.execute('SELECT ts_code,trade_date,open,high,low,close,pct_chg,vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT 250',(ts_code,)).fetchall()
+            cols={r[1] for r in c.execute('PRAGMA table_info(daily)')}
+            required=('trade_date','open','high','low','close','vol','amount')
+            if not set(required).issubset(cols): raise sqlite3.Error('daily表缺少OHLCV字段')
+            pct='pct_chg' if 'pct_chg' in cols else 'NULL AS pct_chg'
+            rows=c.execute(f'SELECT ts_code,trade_date,open,high,low,close,{pct},vol,amount FROM daily WHERE ts_code=? ORDER BY trade_date DESC LIMIT 250',(ts_code,)).fetchall()
             bars=[dict(zip(('ts_code','trade_date','open','high','low','close','pct_chg','vol','amount'),x)) for x in reversed(rows)]
         except sqlite3.Error: bars=[]
         finally: c.close()
@@ -122,8 +185,9 @@ def strategy_a_v4_stock(ts_code):
                     signals.append({'rule_id':x[0],'state':x[1],'signal_date':x[2],'event_id':x[3],'evidence':json.loads(x[4])})
         except (sqlite3.Error,ValueError): signals=[]
         finally: c.close()
-    if not bars and not signals: abort(404)
-    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars[-120:],ma_context=bars[-139:-120],signals=signals)
+    if not bars and not signals and not os.path.exists(cache_path) and not os.path.exists(result_path):
+        abort(404)
+    return render_template('strategy_a_v4_stock.html',ts_code=ts_code,bars=bars[-120:],ma_context=bars[-139:-120],signals=signals,empty_message="暂无本地行情数据" if not bars else "",source="本地 market_cache.sqlite3（只读）")
 
 @app.get('/strategy/a/v4/stock/<ts_code>/data')
 def strategy_a_v4_stock_data(ts_code):

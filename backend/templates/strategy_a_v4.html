@@ -1,21 +1,10 @@
-<!doctype html><meta charset="utf-8"><title>策略 A · V4 盘后复盘</title>
-<style>body{font-family:Arial;margin:24px}table{border-collapse:collapse;width:100%}td,th{padding:8px;border:1px solid #ddd}.bar{padding:12px;background:#f4f6f8;margin-bottom:16px}.error{color:#b00}.warn{color:#a65b00}</style>
-<h1>策略 A · V4 盘后复盘</h1>
-<div class="bar"><span id="status">状态：{{ status.status }}</span>　<span id="progress">已处理 {{ status.processed }}/{{ status.total }}</span>　<span id="failed">失败 {{ status.failed }}</span>　<span id="date">日期 {{ status.asof_date or '未开始' }}</span></div>
-<button id="start">开始复盘</button> <span id="notice"></span>
-<div><label>规则 <select id="rule"><option value="">全部</option>{% for i in range(1,10) %}<option>A0{{ i }}</option>{% endfor %}</select></label>
-<label>状态 <select id="state"><option value="">全部</option><option>CANDIDATE</option><option>CONFIRMED</option><option>INVALIDATED</option></select></label>
-<label>代码 <input id="code"></label><button id="filter">筛选</button></div>
-<div id="summary">{% if result.scan %}上次成功复盘：{{ result.scan.asof_date }}，命中股票 {{ result.scan.stock_count }}，信号 {{ result.scan.signal_count }}{% if result.scan.partial %} <span class="warn">（部分样本，不代表全市场）</span>{% endif %}{% else %}尚无保存结果，请点击“开始复盘”。{% endif %}</div>
-<table><thead><tr><th>代码</th><th>规则</th><th>状态</th><th>日期</th><th>事件</th><th>详情</th></tr></thead><tbody id="rows"></tbody></table>
-<button id="prev">上一页</button><span id="pages">第 1/1 页</span><button id="next">下一页</button>
-<script>
-let page=1,size=50,timer=null;
-const el=id=>document.getElementById(id);
-function qs(){const p=new URLSearchParams({page,page_size:size}),r=el('rule').value,s=el('state').value,c=el('code').value.trim();if(r)p.set('rule_id',r);if(s)p.set('state',s);if(c)p.set('code',c);return p}
-async function load(p){if(p<1)return;page=p;const r=await fetch('/strategy/a/v4/results?'+qs()),d=await r.json(),body=el('rows');body.innerHTML='';(d.items||[]).forEach(x=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+x.ts_code+'</td><td>'+x.rule_id+'</td><td>'+x.state+'</td><td>'+x.signal_date+'</td><td>'+x.event_id+'</td><td><a href="/strategy/a/v4/stock/'+encodeURIComponent(x.ts_code)+'">查看K线</a></td>';body.appendChild(tr)});const total=Math.max(1,Math.ceil((d.total_signals||0)/size));el('pages').textContent='第 '+page+'/'+total+' 页';el('prev').disabled=page<=1;el('next').disabled=page>=total;el('summary').textContent=d.scan?'复盘日期 '+d.scan.asof_date+'，命中股票 '+d.total_matches+'，信号 '+d.total_signals+(d.scan.partial?'（部分样本，不代表全市场）':''): '尚无保存结果'}
-async function poll(){const d=await (await fetch('/strategy/a/v4/status')).json();el('status').textContent='状态：'+d.status;el('progress').textContent='已处理 '+d.processed+'/'+d.total;el('failed').textContent='失败 '+d.failed;el('date').textContent='日期 '+(d.asof_date||'未开始');if(d.status==='RUNNING')timer=setTimeout(poll,1000);else{load(1);el('notice').textContent=d.status==='FAILED'?'扫描失败：'+(d.error||'未知错误'):'已完成'}}
-el('filter').onclick=()=>load(1);el('prev').onclick=()=>load(page-1);el('next').onclick=()=>load(page+1);
-window.addEventListener('load',()=>{poll()});
-el('start').onclick=async()=>{const r=await fetch('/strategy/a/v4/start',{method:'POST'}),d=await r.json();if(r.status===409){el('notice').textContent='已有扫描任务运行中';return}if(!r.ok){el('notice').textContent=d.error||'启动失败';return}el('notice').textContent='后台扫描已启动';poll()};load(1);
-</script>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>策略 A V4 盘后研究</title><link rel="stylesheet" href="/static/v4.css"></head><body>
+<div class="shell"><aside><div class="brand">A-WYCKOFF<br><small>盘后研究终端</small></div><nav><a>市场总览</a><a class="active">策略 A · V4</a><a class="muted">策略 B（未开发）</a><a href="/data-health">数据健康</a></nav><div class="side-note">本地只读<br>不调用 Tushare</div></aside>
+<main><header><div><p class="eyebrow">AFTER MARKET / STRATEGY A</p><h1>威科夫量价复盘</h1><p class="sub">真实行情与已保存信号的可追溯研究看板</p></div><button id="start" class="primary">开始复盘</button></header>
+<section class="date-strip"><span>原始行情最新日 <b>{{ meta.raw_latest }}</b></span><span>已完整验证交易日 <b>{{ meta.validated_latest }}</b></span><span>结果扫描日 <b>{{ result.scan.asof_date if result.scan else '暂无' }}</b></span><span id="run-status">状态：{{ status.status }}</span></section>
+{% if result.scan and result.scan.partial %}<div class="alert">部分样本结果：当前扫描不是全市场结果，不能代表完整选股。</div>{% endif %}
+{% if result.error %}<div class="alert danger">结果库读取失败：{{ result.error }}</div>{% endif %}
+<section class="cards"><div><small>覆盖股票数</small><strong>{{ result.scan.stock_count if result.scan else 0 }}</strong><em>扫描口径</em></div><div><small>处理成功数</small><strong>{{ status.processed or 0 }}</strong><em>后台任务统计</em></div><div><small>命中股票数</small><strong>{{ result.total_matches or 0 }}</strong><em>股票去重</em></div><div><small>信号总数</small><strong>{{ result.total_signals or 0 }}</strong><em>A01–A09 信号行</em></div></section>
+<section class="toolbar"><input id="code" placeholder="搜索代码或名称"><select id="rule"><option value="">全部规则</option>{% for i in range(1,10) %}<option>A0{{i}}</option>{% endfor %}</select><select id="state"><option value="">全部状态</option><option>CANDIDATE</option><option>CONFIRMED</option><option>INVALIDATED</option></select><button id="filter">筛选</button></section>
+<section class="panel"><div class="panel-head"><h2>策略 A 信号</h2><span id="pages">第 1 页</span></div><table><thead><tr><th>代码</th><th>规则</th><th>状态</th><th>信号日期</th><th>事件 ID</th><th></th></tr></thead><tbody id="rows"><tr><td colspan="6" class="empty">正在读取已保存结果…</td></tr></tbody></table><div class="pager"><button id="prev">上一页</button><button id="next">下一页</button></div></section>
+</main></div><script></script><script src="/static/v4.js"></script></body></html>

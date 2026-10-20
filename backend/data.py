@@ -1,5 +1,6 @@
 import os, sqlite3, threading, time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import pandas as pd
 try: import tushare as ts
 except Exception: ts=None
@@ -34,11 +35,14 @@ def _call(method,**kwargs):
 def _upsert(c,frame):
  cols=['ts_code','trade_date','open','high','low','close','pre_close','change','pct_chg','vol','amount','turnover_rate']
  frame=frame.reindex(columns=cols); frame.to_sql('_incoming',c,if_exists='replace',index=False)
- c.execute('''INSERT INTO daily SELECT * FROM _incoming WHERE ts_code IS NOT NULL AND trade_date IS NOT NULL ON CONFLICT(ts_code,trade_date) DO UPDATE SET open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,pre_close=excluded.pre_close,change=excluded.change,pct_chg=excluded.pct_chg,vol=excluded.vol,amount=excluded.amount,turnover_rate=excluded.turnover_rate'''); c.execute('DROP TABLE _incoming')
+ c.execute('''INSERT INTO daily SELECT * FROM _incoming WHERE ts_code IS NOT NULL AND trade_date IS NOT NULL ON CONFLICT(ts_code,trade_date) DO UPDATE SET open=COALESCE(excluded.open,daily.open),high=COALESCE(excluded.high,daily.high),low=COALESCE(excluded.low,daily.low),close=COALESCE(excluded.close,daily.close),pre_close=COALESCE(excluded.pre_close,daily.pre_close),change=COALESCE(excluded.change,daily.change),pct_chg=COALESCE(excluded.pct_chg,daily.pct_chg),vol=COALESCE(excluded.vol,daily.vol),amount=COALESCE(excluded.amount,daily.amount),turnover_rate=COALESCE(excluded.turnover_rate,daily.turnover_rate)'''); c.execute('DROP TABLE _incoming')
 
 def _calendar(limit=120):
  if not pro: return []
- end=datetime.now().strftime('%Y%m%d'); start=(datetime.now()-timedelta(days=240)).strftime('%Y%m%d')
+ # Tushare dates are exchange dates; always derive the window in China time.
+ # This keeps the result stable when the host Windows timezone is elsewhere.
+ now=datetime.now(ZoneInfo("Asia/Shanghai"))
+ end=now.strftime('%Y%m%d'); start=(now-timedelta(days=240)).strftime('%Y%m%d')
  cal=_call('trade_cal',exchange='SSE',start_date=start,end_date=end,is_open='1')
  if cal is None or cal.empty or 'cal_date' not in cal: return []
  return sorted(cal['cal_date'].astype(str).tolist())[-limit:]
@@ -61,21 +65,44 @@ def get_history(ts_code,kind='daily',days=240):
  d['dt']=pd.to_datetime(d.trade_date); d=d.set_index('dt')
  rule='W-FRI' if kind=='weekly' else 'ME'; out=d.resample(rule).agg({'open':'first','high':'max','low':'min','close':'last','pre_close':'first','change':'sum','vol':'sum','amount':'sum'}).dropna(subset=['close']).reset_index().rename(columns={'dt':'trade_date'}); out['trade_date']=out.trade_date.dt.strftime('%Y%m%d'); return out.tail(days)
 
+def _expected_codes():
+ try:
+  stocks=get_stock_list()
+  if 'ts_code' in stocks:
+   return {str(x) for x in stocks['ts_code'].dropna().astype(str) if x}
+ except Exception:
+  pass
+ return set()
+
+def _date_needs_update(c, day, expected):
+ rows=c.execute("SELECT ts_code,open,high,low,close,vol FROM daily WHERE trade_date=?",(day,)).fetchall()
+ if not rows:
+  return True
+ valid={str(r[0]) for r in rows if all(v is not None for v in r[1:])}
+ return bool(expected and not expected.issubset(valid))
+
 def _run_update(max_days=120):
+ c=None
  try:
   _status.update(running=True,requested=0,success=0,failed=0,completed=0,last_error='')
   if not pro: _status['last_error']='Tushare未配置'; return
-  c=_db(); dates=_calendar(max_days); existing={r[0] for r in c.execute('SELECT DISTINCT trade_date FROM daily')}; todo=[d for d in dates if d not in existing]; _status['total']=len(todo)
+  c=_db(); dates=_calendar(max_days); expected=_expected_codes()
+  todo=[d for d in dates if _date_needs_update(c,d,expected)]
+  _status['total']=len(todo)
   for i,day in enumerate(todo,1):
    try:
     frame=_call('daily',trade_date=day)
     if frame is None or frame.empty: _status['last_error']=f'{day}: 未发布行情'; break
     if not {'ts_code','trade_date','open','high','low','close','vol'}.issubset(frame.columns): raise ValueError('daily字段不完整')
-    basic=_call('daily_basic',trade_date=day,fields='ts_code,trade_date,turnover_rate');
-    if basic is not None and not basic.empty and 'turnover_rate' in basic: frame=frame.merge(basic[['ts_code','trade_date','turnover_rate']],on=['ts_code','trade_date'],how='left');
+    basic=_call('daily_basic',trade_date=day,fields='ts_code,trade_date,turnover_rate')
+    if basic is not None and not basic.empty and 'turnover_rate' in basic:
+     frame=frame.merge(basic[['ts_code','trade_date','turnover_rate']],on=['ts_code','trade_date'],how='left')
     _upsert(c,frame); c.commit(); _status['completed']=i; _status['last_update']=datetime.now().isoformat()
-   except Exception as e: _status['last_error']=str(e); break
- finally: _status['running']=False
+   except Exception as e:
+    _status['last_error']=str(e); break
+ finally:
+  if c is not None: c.close()
+  _status['running']=False
 
 def start_update(max_days=120):
  global _thread
