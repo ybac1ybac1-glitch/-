@@ -35,7 +35,7 @@ def _call(method,**kwargs):
 def _upsert(c,frame):
  cols=['ts_code','trade_date','open','high','low','close','pre_close','change','pct_chg','vol','amount','turnover_rate']
  frame=frame.reindex(columns=cols); frame.to_sql('_incoming',c,if_exists='replace',index=False)
- c.execute('''INSERT INTO daily SELECT * FROM _incoming WHERE ts_code IS NOT NULL AND trade_date IS NOT NULL ON CONFLICT(ts_code,trade_date) DO UPDATE SET open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,pre_close=excluded.pre_close,change=excluded.change,pct_chg=excluded.pct_chg,vol=excluded.vol,amount=excluded.amount,turnover_rate=excluded.turnover_rate'''); c.execute('DROP TABLE _incoming')
+ c.execute('''INSERT INTO daily SELECT * FROM _incoming WHERE ts_code IS NOT NULL AND trade_date IS NOT NULL ON CONFLICT(ts_code,trade_date) DO UPDATE SET open=COALESCE(excluded.open,daily.open),high=COALESCE(excluded.high,daily.high),low=COALESCE(excluded.low,daily.low),close=COALESCE(excluded.close,daily.close),pre_close=COALESCE(excluded.pre_close,daily.pre_close),change=COALESCE(excluded.change,daily.change),pct_chg=COALESCE(excluded.pct_chg,daily.pct_chg),vol=COALESCE(excluded.vol,daily.vol),amount=COALESCE(excluded.amount,daily.amount),turnover_rate=COALESCE(excluded.turnover_rate,daily.turnover_rate)'''); c.execute('DROP TABLE _incoming')
 
 def _calendar(limit=120):
  if not pro: return []
